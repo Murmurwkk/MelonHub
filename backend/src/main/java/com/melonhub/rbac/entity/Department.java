@@ -19,9 +19,12 @@ public class Department {
     /** Set by the database default; read back after insert. */
     @Generated @Column(insertable = false, updatable = false) private Instant createdAt;
 
-    protected Department() {}
+    public Department() {}
 
     public Long getId() { return id; }
     public String getName() { return name; }
+    public Department setName(String name) { this.name = name; return this; }
     public String getCode() { return code; }
+    public Department setCode(String code) { this.code = code; return this; }
+    public Instant getCreatedAt() { return createdAt; }
 }

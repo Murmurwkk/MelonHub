@@ -30,10 +30,22 @@ public class ApplicationKey {
     private Instant lastUsedAt;
     private Instant revokedAt;
 
-    protected ApplicationKey() {}
+    public ApplicationKey() {}
 
     public Long getId() { return id; }
     public Application getApplication() { return application; }
+    public ApplicationKey setApplication(Application application) { this.application = application; return this; }
+    public String getName() { return name; }
+    public ApplicationKey setName(String name) { this.name = name; return this; }
+    public String getKeyPrefix() { return keyPrefix; }
+    public ApplicationKey setKeyPrefix(String keyPrefix) { this.keyPrefix = keyPrefix; return this; }
+    public String getKeyHash() { return keyHash; }
+    public ApplicationKey setKeyHash(String keyHash) { this.keyHash = keyHash; return this; }
+    public String getCreatedBy() { return createdBy; }
+    public ApplicationKey setCreatedBy(String createdBy) { this.createdBy = createdBy; return this; }
+    public Instant getCreatedAt() { return createdAt; }
     public Instant getExpiresAt() { return expiresAt; }
+    public ApplicationKey setExpiresAt(Instant expiresAt) { this.expiresAt = expiresAt; return this; }
+    public Instant getLastUsedAt() { return lastUsedAt; }
     public Instant getRevokedAt() { return revokedAt; }
 }

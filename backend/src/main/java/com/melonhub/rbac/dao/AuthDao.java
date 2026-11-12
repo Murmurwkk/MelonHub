@@ -247,6 +247,4 @@ public class AuthDao {
     }
     public void markKeysUsed(Collection<Long> ids) { if (!ids.isEmpty()) keys.markUsed(ids, now()); }
 
-    /** Placeholder list for the DAOs that still build SQL; removed once they use JPA. */
-    static String placeholders(int count) { return String.join(",", java.util.Collections.nCopies(count, "?")); }
 }

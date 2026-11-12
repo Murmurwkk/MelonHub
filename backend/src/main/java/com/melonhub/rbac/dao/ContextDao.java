@@ -1,86 +1,169 @@
 package com.melonhub.rbac.dao;
 
-import java.sql.Timestamp;
+import com.melonhub.rbac.entity.ContextRole;
+import com.melonhub.rbac.entity.ContextRoleId;
+import com.melonhub.rbac.entity.Department;
+import com.melonhub.rbac.entity.PermissionContext;
+import com.melonhub.rbac.entity.Role;
+import com.melonhub.rbac.entity.User;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.Tuple;
 import java.time.Instant;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * Permission contexts. Issuing locks the user row; validation (state, effective roles and permissions) never locks
+ * and is meant to run in one read-only transaction so every query reads the same snapshot. Each validation query is
+ * a single JPQL statement, as the SQL it replaced was.
+ */
 @Repository
+@Transactional
 public class ContextDao {
     public record ContextRow(long user, long department, long application, long version, Instant expiresAt) {}
     /** A stored context and whether its user, application, membership and version still allow it. */
     public record ContextState(ContextRow context, boolean valid) {}
 
-    private final JdbcTemplate db;
-    public ContextDao(JdbcTemplate db) { this.db = db; }
+    /** Roles that count: enabled, and assigned to the user without having expired. */
+    private static final String HELD = "ur.user.id = :user and (ur.expiresAt is null or ur.expiresAt > current_timestamp) and r.enabled = true";
+    private final EntityManager em;
+    public ContextDao(EntityManager em) { this.em = em; }
 
+    private int update(String jpql, Object... namedValues) {
+        em.flush();
+        var query = em.createQuery(jpql);
+        for (int i = 0; i < namedValues.length; i += 2) query.setParameter((String) namedValues[i], namedValues[i + 1]);
+        int changed = query.executeUpdate();
+        em.clear();
+        return changed;
+    }
+
+    /** Locks the user that currently has this external id and reads its row again under the lock. */
     public List<Map<String,Object>> lockUserByExternalId(String external) {
-        return db.queryForList("SELECT id,enabled,active_department_id,context_version FROM users WHERE external_id=? FOR UPDATE", external);
+        var users = em.createQuery("select u from User u where u.externalId = :external", User.class)
+                .setParameter("external", external).setLockMode(LockModeType.PESSIMISTIC_WRITE).getResultList();
+        return users.stream().map(user -> {
+            em.refresh(user, LockModeType.PESSIMISTIC_WRITE);
+            var row = new LinkedHashMap<String,Object>();
+            row.put("id", user.getId());
+            row.put("enabled", user.isEnabled());
+            row.put("active_department_id", user.getActiveDepartment() == null ? null : user.getActiveDepartment().getId());
+            row.put("context_version", user.getContextVersion());
+            return (Map<String,Object>) row;
+        }).toList();
     }
-    public boolean applicationEnabled(long app) { return db.queryForObject("SELECT COUNT(*) FROM applications WHERE id=? AND enabled=TRUE", Long.class, app) > 0; }
-    public boolean member(long user, long dept) { return db.queryForObject("SELECT COUNT(*) FROM memberships WHERE user_id=? AND department_id=?", Long.class, user, dept) > 0; }
+    public boolean applicationEnabled(long app) {
+        return em.createQuery("select count(a) from Application a where a.id = :app and a.enabled = true", Long.class).setParameter("app", app).getSingleResult() > 0;
+    }
+    public boolean member(long user, long dept) {
+        return em.createQuery("select count(m) from Membership m where m.user.id = :user and m.department.id = :dept", Long.class)
+                .setParameter("user", user).setParameter("dept", dept).getSingleResult() > 0;
+    }
     public List<Long> assignedRoles(long user, long dept, long app) {
-        return db.queryForList("SELECT r.id FROM roles r JOIN user_roles ur ON ur.role_id=r.id WHERE ur.user_id=? AND r.department_id=? AND r.application_id=? "
-                + "AND r.enabled=TRUE AND (ur.expires_at IS NULL OR ur.expires_at>CURRENT_TIMESTAMP) ORDER BY r.id",
-                Long.class, user, dept, app);
+        return em.createQuery("select r.id from UserRole ur join ur.role r where " + HELD
+                        + " and r.department.id = :dept and r.application.id = :app order by r.id", Long.class)
+                .setParameter("user", user).setParameter("dept", dept).setParameter("app", app).getResultList();
     }
-    public void switchDepartment(long user, long dept, long version) { db.update("UPDATE users SET active_department_id=?,context_version=? WHERE id=?", dept, version, user); }
+    public void switchDepartment(long user, long dept, long version) {
+        update("update User u set u.activeDepartment = :dept, u.contextVersion = :version where u.id = :user",
+                "dept", em.getReference(Department.class, dept), "version", version, "user", user);
+    }
+    /** Context roles go with their context (ON DELETE CASCADE). */
     public void clearStaleContexts(long user, long version) {
-        db.update("DELETE FROM permission_contexts WHERE user_id=? AND (expires_at<CURRENT_TIMESTAMP OR context_version<>?)", user, version);
+        update("delete from PermissionContext c where c.user.id = :user and (c.expiresAt < current_timestamp or c.contextVersion <> :version)",
+                "user", user, "version", version);
     }
     public void create(String hash, long user, long dept, long app, long version, Instant expires) {
-        db.update("INSERT INTO permission_contexts(id,user_id,department_id,application_id,context_version,expires_at) VALUES (?,?,?,?,?,?)",
-                hash, user, dept, app, version, Timestamp.from(expires));
+        em.persist(new PermissionContext().setId(hash).setUser(em.getReference(User.class, user)).setDepartmentId(dept).setApplicationId(app)
+                .setContextVersion(version).setExpiresAt(expires));
+        em.flush();
     }
     public void activateRoles(String hash, Collection<Long> roles) {
-        db.batchUpdate("INSERT INTO context_roles(context_id,role_id) VALUES (?,?)", roles.stream().map(role -> new Object[]{hash, role}).toList());
+        var context = em.getReference(PermissionContext.class, hash);
+        for (long role : roles)
+            em.persist(new ContextRole().setId(new ContextRoleId(hash, role)).setContext(context).setRole(em.getReference(Role.class, role)));
+        em.flush();
     }
 
     /** Lock-free validation; callers run it inside one transaction so every query reads the same snapshot. */
     public Optional<ContextState> state(String hash) {
-        return db.query("SELECT c.user_id,c.department_id,c.application_id,c.context_version,c.expires_at,"
-                + "COALESCE(u.enabled AND a.enabled AND u.context_version=c.context_version AND u.active_department_id=c.department_id"
-                + " AND EXISTS(SELECT 1 FROM memberships m WHERE m.user_id=c.user_id AND m.department_id=c.department_id),FALSE) "
-                + "FROM permission_contexts c JOIN users u ON u.id=c.user_id JOIN applications a ON a.id=c.application_id WHERE c.id=?",
-                (rs, i) -> new ContextState(new ContextRow(rs.getLong(1), rs.getLong(2), rs.getLong(3), rs.getLong(4), rs.getTimestamp(5).toInstant()), rs.getBoolean(6)),
-                hash).stream().findFirst();
+        return em.createQuery("""
+                select c.user.id, c.departmentId, c.applicationId, c.contextVersion, c.expiresAt,
+                       case when u.enabled = true and a.enabled = true and u.contextVersion = c.contextVersion
+                                 and u.activeDepartment.id = c.departmentId
+                                 and exists (select 1 from Membership m where m.user.id = u.id and m.department.id = c.departmentId)
+                            then true else false end
+                from PermissionContext c join c.user u join c.application a where c.id = :hash""", Tuple.class)
+                .setParameter("hash", hash).getResultStream().findFirst()
+                .map(t -> new ContextState(new ContextRow(t.get(0, Long.class), t.get(1, Long.class), t.get(2, Long.class), t.get(3, Long.class),
+                        t.get(4, Instant.class)), Boolean.TRUE.equals(t.get(5))));
     }
     public List<Map<String,Object>> effectiveRoles(long user, String hash, long dept, long app) {
-        return db.queryForList("SELECT r.id,r.name,r.code,ur.expires_at FROM roles r JOIN context_roles cr ON cr.role_id=r.id JOIN user_roles ur ON ur.role_id=r.id AND ur.user_id=? "
-                + "AND (ur.expires_at IS NULL OR ur.expires_at>CURRENT_TIMESTAMP) "
-                + "WHERE cr.context_id=? AND r.department_id=? AND r.application_id=? AND r.enabled=TRUE ORDER BY r.id", user, hash, dept, app);
+        return Jpql.rows(em.createQuery("""
+                select r.id as id, r.name as name, r.code as code, ur.expiresAt as expires_at
+                from ContextRole cr join cr.role r, UserRole ur
+                where ur.role = r and cr.context.id = :hash and r.department.id = :dept and r.application.id = :app and\s""" + HELD + " order by r.id", Tuple.class)
+                .setParameter("user", user).setParameter("hash", hash).setParameter("dept", dept).setParameter("app", app).getResultList());
     }
     public List<String> effectivePermissions(long user, String hash, long dept, long app) {
-        return db.queryForList("SELECT DISTINCT p.code FROM permissions p JOIN role_permissions rp ON rp.permission_id=p.id JOIN roles r ON r.id=rp.role_id "
-                + "JOIN context_roles cr ON cr.role_id=r.id JOIN user_roles ur ON ur.role_id=r.id AND ur.user_id=? "
-                + "AND (ur.expires_at IS NULL OR ur.expires_at>CURRENT_TIMESTAMP) "
-                + "WHERE cr.context_id=? AND r.enabled=TRUE AND p.department_id=? AND p.application_id=? ORDER BY p.code", String.class, user, hash, dept, app);
+        return em.createQuery("""
+                select distinct p.code from RolePermission rp join rp.permission p join rp.role r, ContextRole cr, UserRole ur
+                where cr.role = r and ur.role = r and cr.context.id = :hash and p.department.id = :dept and p.application.id = :app and\s"""
+                        + HELD + " order by p.code", String.class)
+                .setParameter("user", user).setParameter("hash", hash).setParameter("dept", dept).setParameter("app", app).getResultList();
     }
-    public int revoke(String hash, long app) { return db.update("DELETE FROM permission_contexts WHERE id=? AND application_id=?", hash, app); }
+    public int revoke(String hash, long app) {
+        return update("delete from PermissionContext c where c.id = :hash and c.applicationId = :app", "hash", hash, "app", app);
+    }
     public int revokeDomain(long user, long dept, long app) {
-        return db.update("DELETE FROM permission_contexts WHERE user_id=? AND department_id=? AND application_id=?", user, dept, app);
+        return update("delete from PermissionContext c where c.user.id = :user and c.departmentId = :dept and c.applicationId = :app",
+                "user", user, "dept", dept, "app", app);
     }
     public int revokeDomain(Collection<Long> users, long dept, long app) {
         if (users.isEmpty()) return 0;
-        Object[] args = new Object[users.size() + 2];
-        args[0] = dept; args[1] = app;
-        int i = 2;
-        for (long user : users) args[i++] = user;
-        return db.update("DELETE FROM permission_contexts WHERE department_id=? AND application_id=? AND user_id IN (" + AuthDao.placeholders(users.size()) + ")", args);
+        return update("delete from PermissionContext c where c.departmentId = :dept and c.applicationId = :app and c.user.id in :users",
+                "dept", dept, "app", app, "users", users);
     }
-    public int revokeUser(long user) { return db.update("DELETE FROM permission_contexts WHERE user_id=?", user); }
-    public int clearApplication(long app) { return db.update("DELETE FROM permission_contexts WHERE application_id=?", app); }
-    public int clearDepartment(long dept) { return db.update("DELETE FROM permission_contexts WHERE department_id=?", dept); }
+    public int revokeUser(long user) { return update("delete from PermissionContext c where c.user.id = :user", "user", user); }
+    public int clearApplication(long app) { return update("delete from PermissionContext c where c.applicationId = :app", "app", app); }
+    public int clearDepartment(long dept) { return update("delete from PermissionContext c where c.departmentId = :dept", "dept", dept); }
     public List<Map<String,Object>> activeContexts(long user) {
-        return db.queryForList("SELECT c.department_id AS departmentId,d.name AS departmentName,c.application_id AS applicationId,a.name AS applicationName,"
-                + "c.created_at AS createdAt,c.expires_at AS expiresAt,(SELECT COUNT(*) FROM context_roles cr WHERE cr.context_id=c.id) AS activeRoleCount,"
-                + "COALESCE(u.enabled AND a.enabled AND u.context_version=c.context_version AND u.active_department_id=c.department_id,FALSE) AS valid "
-                + "FROM permission_contexts c JOIN users u ON u.id=c.user_id JOIN departments d ON d.id=c.department_id JOIN applications a ON a.id=c.application_id "
-                + "WHERE c.user_id=? AND c.expires_at>CURRENT_TIMESTAMP ORDER BY c.created_at DESC LIMIT 200", user);
+        var rows = Jpql.rows(em.createQuery("""
+                select c.id as id, c.departmentId as departmentId, d.name as departmentName, c.applicationId as applicationId,
+                       a.name as applicationName, c.createdAt as createdAt, c.expiresAt as expiresAt,
+                       case when u.enabled = true and a.enabled = true and u.contextVersion = c.contextVersion
+                                 and u.activeDepartment.id = c.departmentId then 1L else 0L end as valid
+                from PermissionContext c join c.user u join c.department d join c.application a
+                where c.user.id = :user and c.expiresAt > current_timestamp order by c.createdAt desc""", Tuple.class)
+                .setParameter("user", user).setMaxResults(200).getResultList());
+        if (rows.isEmpty()) return rows;
+        var counts = new HashMap<String,Long>();
+        for (var tuple : em.createQuery("select cr.context.id, count(cr) from ContextRole cr where cr.context.id in :ids group by cr.context.id", Tuple.class)
+                .setParameter("ids", rows.stream().map(r -> (String) r.get("id")).toList()).getResultList())
+            counts.put(tuple.get(0, String.class), tuple.get(1, Long.class));
+        for (var row : rows) {
+            // The token hash is internal; the console only sees which domain and when.
+            String id = (String) row.remove("id");
+            var ordered = new LinkedHashMap<String,Object>();
+            row.forEach((key, value) -> { if (!key.equals("valid")) ordered.put(key, value); });
+            ordered.put("activeRoleCount", counts.getOrDefault(id, 0L));
+            ordered.put("valid", row.get("valid"));
+            row.clear();
+            row.putAll(ordered);
+        }
+        return rows;
     }
-    public int purgeExpired(int limit) { return db.update("DELETE FROM permission_contexts WHERE expires_at<CURRENT_TIMESTAMP LIMIT ?", limit); }
+    /** Expired contexts, at most limit of them. */
+    public int purgeExpired(int limit) {
+        var ids = em.createQuery("select c.id from PermissionContext c where c.expiresAt < current_timestamp", String.class)
+                .setMaxResults(limit).getResultList();
+        return ids.isEmpty() ? 0 : update("delete from PermissionContext c where c.id in :ids", "ids", ids);
+    }
 }

@@ -28,7 +28,7 @@
 
 | 项目 | 当前情况 |
 | --- | --- |
-| 后端 | Spring Boot 3.5.7、Spring Data JPA（Hibernate；迁移进行中：`AuthDao`、`AdminRoleDao` 已用 JPA，其余 DAO 仍为 JdbcTemplate）、Spring Data Redis（Lettuce）、Bean Validation、Flyway、MySQL Connector/J、Actuator + Micrometer Prometheus、spring-security-crypto |
+| 后端 | Spring Boot 3.5.7、Spring Data JPA（Hibernate，`ddl-auto=validate`，表结构仍由 Flyway 管理）、Spring Data Redis（Lettuce）、Bean Validation、Flyway、MySQL Connector/J、Actuator + Micrometer Prometheus、spring-security-crypto |
 | Java | 源码目标 Java 17；当前使用 `C:\Program Files\Java\jdk-17` |
 | 前端 | Vue 3.5.22、TypeScript 5.9.3、Pinia 3.0.3、Vue Router 4.5.1（hash 路由）、Vite 6.4.1、ant-design-vue 4.2.6、@ant-design/icons-vue 7、dayjs |
 | Java SDK | `sdk/java`，`com.melonhub:melonhub-client:1.0.0`，独立 Maven 工程（不在根 `pom.xml` 聚合中），基于 JDK HttpClient，Spring Boot 自动装配可选；未发布到远程仓库，需 `mvn -f sdk/java/pom.xml install` |
@@ -42,7 +42,7 @@
 | --- | --- |
 | controller | `AuthController` 健康/登录/改密/两步验证/me，`AdminController` 控制台基础配置，`GovernanceController`（`/api/admin`）审批、复核、Webhook、清单、用户导入、权限反查、即将到期、软件限额、搜索、系统状态、审计链校验，`AccountController` 管理员账号（含 MFA 重置、解锁），`BusinessController` 业务 API（含角色申请与只读授权查询） |
 | service | `RbacService` 配置与规则，`ContextService` 上下文与校验，`AuthService` 管理员、TOTP 与 API Key 认证，`GovernanceService` 审批/复核/导入/清单/反查，`WebhookService` 事件外盒与投递，`AuditSealService` 审计哈希链封存与校验，`ConsoleService` 搜索与状态看板，`MaintenanceService` 定时清理与分配到期 |
-| dao | `RbacDao`、`ContextDao`、`GovernanceDao`、`WebhookDao`、`AuditDao`：JdbcTemplate、SQL、数据库锁；`AuthDao`、`AdminRoleDao`：JPA（`entity` 实体、`repository` Spring Data 仓库），不写原生 SQL。DAO 方法签名与返回结构保持不变，写操作在方法返回前 flush；做决定的读取用 JPQL 标量投影（不受持久化上下文中旧实体影响），加锁用 `@Lock`/`refresh(…, LockModeType)`，时间取应用服务器时钟 |
+| dao | `RbacDao`、`ContextDao`、`AuthDao`、`AdminRoleDao`、`GovernanceDao`、`WebhookDao`、`AuditDao`：JPA（`entity` 实体、`repository` Spring Data 仓库、`Jpql` 条件拼装与结果行），应用代码中不使用 JdbcTemplate 与原生 SQL。DAO 方法签名与返回结构（Map 的键、`java.sql.Timestamp` 时间）保持迁移前的样子，由 `ApiContractTest` 核对；写操作在方法返回前 flush，批量 JPQL 执行后清空持久化上下文；做决定的读取用 JPQL 投影；加锁读取先清空持久化上下文再带 `LockModeType` 查询，取到最新提交的行；带条件的更新（认领、口令步、密码替换等）保持原条件写成 JPQL；`created_at` 等由数据库生成（`@Generated`）；需要时间运算的阈值取应用服务器时钟，比较当前时间用 JPQL `current_timestamp` |
 | cache | `PermissionCache`：Redis 缓存、代标记失效协议、熔断与纪元恢复 |
 | dto | `Requests`：输入类型与校验 |
 | security | `ApiGuard` 统一鉴权/限流/请求编号/安全头，`GlobalRateLimiter` Redis 固定窗口跨实例限流（失败回退 `RateLimiter`），`ApplicationRateLimits` 软件限额（实例缓存 30 秒），`Totp`，`AdminAccess`/`AdminPrincipal` 管理员权限，`ApplicationCaller`，`RateLimiter`，`ClientAddress`，`Credentials` |
@@ -51,7 +51,7 @@
 
 迁移：`V1__rbac.sql`、`V2__enterprise.sql`、`V3__governance.sql`（`user_roles` 到期/授予人、`applications.rate_limit`、`access_requests`、`access_reviews`、`access_review_items`、`webhooks`、`webhook_deliveries`、`admin_accounts` MFA 字段、`audit_events.prev_hash/chain_hash`、`audit_seal`）、`V4__audit_seal_order.sql`（`audit_events.seal_seq`，`audit_seal` 的 `last_seq`、`anchor_seq/anchor_hash`）、`V6__admin_functions.sql`（`admin_functions` 功能清单、`admin_roles`、`admin_role_functions`、`admin_accounts.all_applications` 与角色外键），`V7__admin_tree.sql`（`admin_accounts.parent_username/kind/all_departments`、`admin_account_departments`，原非超级管理员账号挂到首个超级管理员之下），`V5__governance_history.sql`（`admin_accounts/admin_sessions.credential_version`、`user_roles.grant_id`、申请与复核条目的名称快照且外键改为 `ON DELETE SET NULL`、`access_requests.pending_role_id` 唯一索引、复核条目 `grant_id/skipped`、`audit_seal.v2_from_seq`）。已应用的迁移不得修改，结构变更新建 V6。
 
-Controller、Service 不直接使用 JdbcTemplate，不把 SQL 搬回服务层。不新增无意义抽象。
+Controller、Service 不直接使用 EntityManager 或仓库查询，持久化留在 DAO；新代码不写原生 SQL。不新增无意义抽象。
 
 前端 `frontend/src`：`main.ts` 路由与权限守卫（`superOnly` 页面仅超级管理员；`domain` 标记的页面显示授权域选择），`App.vue` 布局（侧栏、面包屑、全局搜索、授权域选择、健康徽标、主题切换、账号菜单含两步验证与修改密码；手机上侧栏改为左侧抽屉、授权域移到顶栏下方整行、全局搜索收成图标），`store.ts` 身份与授权域，`api.ts` 请求与会话（token 在 sessionStorage），`theme.ts` 明暗主题与 antd 主题令牌（默认跟随系统，选择存 localStorage `melonhub-theme`，颜色需与 `style.css` 变量同步），`responsive.ts` 手机断点（≤768px，与 `style.css` 的媒体查询同步）：`isPhone`，以及给表格单元格写 `data-label`（列标题）和 `data-empty`（只有“—”或空）供手机卡片布局使用，“操作”列按标题识别，`composables.ts` 带请求序号的分页/列表（丢弃过时响应），`labels.ts` 中文标签，`types.ts` 类型。`pages/` 14 个页面：Overview、Departments、Users（含批量导入）、Applications（API Key/Webhook 抽屉，“更多”中限流）、Roles（“清单与复制”下拉：导出本部门清单/导出全部部门清单/导入清单/从其他部门复制）、Permissions（使用者反查）、Assignments（逐角色到期、统一有效天数、即将到期标签）、Approvals、Reviews、Simulate、Audit（校验链条）、Status、Accounts、Integration。`components/`：DomainPicker、DomainEmpty、GlobalSearch（Ctrl/⌘+K）、ThemeToggle、PageHead、EmptyState、ReadonlyHint、LoginView（MFA 口令步骤）、MfaModal、PasswordModal、KeysDrawer、WebhooksDrawer、ReviewDrawer、PermissionHoldersDrawer、UserAccessDrawer、RoleMembersDrawer、UserPicker、SecretModal。样式在 `style.css`，覆盖 antd 默认样式时要提高选择器优先级（如 `.shell .ant-layout-header.header`），深色模式需同时检查。
 

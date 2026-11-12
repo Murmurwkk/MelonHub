@@ -2,7 +2,7 @@
 
 企业内部统一权限服务，为 20 多个业务软件提供角色、权限配置和在线授权判断。按 **部门 × 软件** 隔离，严格保持 RBAC0：用户与角色、角色与权限均为多对多，没有用户直接权限、角色继承或业务逻辑。
 
-技术栈：Spring Boot 3.5 + Spring JDBC + Flyway + MySQL（唯一数据源）+ Redis（权限缓存与全局限流），前端 Vue 3 + TypeScript + Ant Design Vue 4，业务侧提供 Java SDK。
+技术栈：Spring Boot 3.5 + Spring Data JPA（Hibernate）+ Flyway + MySQL（唯一数据源）+ Redis（权限缓存与全局限流），前端 Vue 3 + TypeScript + Ant Design Vue 4，业务侧提供 Java SDK。
 
 当前本机位于 `D:\MelonHub`，通过 `local` 配置复用 Docker 的 `xmudemo-mysql`，权限缓存使用本项目专用的 `melonhub-redis` 容器。原有 `cloud` 配置保留，两者显式选择。
 
@@ -75,7 +75,7 @@ Invoke-RestMethod http://127.0.0.1:8080/api/health
 | --- | --- |
 | `backend/.../controller` | HTTP 路由：控制台、授权治理、管理员账号、登录与健康、业务 API |
 | `backend/.../service` | RBAC0 规则、事务、上下文与校验、认证与两步验证、授权治理、Webhook、审计哈希链、定时清理 |
-| `backend/.../dao` | JDBC、SQL、持久化与数据库锁 |
+| `backend/.../dao`、`entity`、`repository` | JPA 实体、查询、持久化与数据库锁 |
 | `backend/.../cache` | Redis 权限缓存与失效协议 |
 | `backend/.../security` | 统一鉴权、全局与实例内限流、TOTP、管理员权限、凭据生成与哈希 |
 | `backend/.../dto`、`exception`、`config` | 请求校验、统一错误、数据库目标保护与 Redis 配置 |

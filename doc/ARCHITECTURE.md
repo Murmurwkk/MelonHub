@@ -206,7 +206,8 @@ JDBC 使用 `serverTimezone=SERVER` 读取数据库实际会话时区，避免�
 | `backend/src/main/java/com/melonhub/rbac/RbacApplication.java` | Spring Boot 启动入口，启用定时任务 |
 | `controller/` | `AuthController` 健康、登录、两步验证，`AdminController` 控制台基础配置，`GovernanceController` 审批、复核、Webhook、清单、导入、报表、搜索、系统状态与审计校验，`AccountController` 管理员账号，`BusinessController` 业务 API |
 | `service/` | `RbacService` 配置与授权规则，`ContextService` 上下文与校验，`AuthService` 管理员、两步验证与 API Key 认证，`GovernanceService` 授权治理，`WebhookService` 变更通知与投递，`AuditSealService` 审计哈希链，`ConsoleService` 搜索与状态看板，`MaintenanceService` 定时清理 |
-| `dao/` | `RbacDao`、`ContextDao`、`AuthDao`、`GovernanceDao`、`WebhookDao`、`AuditDao`：JdbcTemplate、参数绑定 SQL 和数据库锁 |
+| `dao/` | `RbacDao`、`ContextDao`、`AuthDao`、`AdminRoleDao`、`GovernanceDao`、`WebhookDao`、`AuditDao`：JPA 查询（JPQL 与 Spring Data 仓库）、悲观锁与带条件的批量更新 |
+| `entity/`、`repository/` | JPA 实体（每张表一个，复合主键用 `@EmbeddedId`）与 Spring Data 仓库 |
 | `cache/` | `PermissionCache`：Redis 缓存、失效协议、熔断与恢复 |
 | `dto/` | 请求类型与 Bean Validation 校验 |
 | `security/` | `ApiGuard` 统一鉴权与限流入口，`GlobalRateLimiter` 跨实例限流，`ApplicationRateLimits` 软件限额，`RateLimiter` 实例内令牌桶，`Totp`，`AdminAccess`/`AdminPrincipal` 管理员权限，凭据生成与哈希 |
@@ -220,9 +221,9 @@ JDBC 使用 `serverTimezone=SERVER` 读取数据库实际会话时区，避免�
 | `scripts/` | 一键启停、Redis 容器管理、数据库检查和测试脚本 |
 | `doc/` | 中文使用说明、接口和架构文档 |
 
-后端技术栈为 Spring Boot 3.5.7、Spring JDBC、Spring Data Redis（Lettuce）、Bean Validation、Flyway、MySQL Connector/J、Actuator 与 Micrometer Prometheus。前端为 Vue 3.5、TypeScript 5.9、Pinia 3、Vue Router 4、Vite 6 和 Ant Design Vue 4.2。
+后端技术栈为 Spring Boot 3.5.7、Spring Data JPA（Hibernate）、Spring Data Redis（Lettuce）、Bean Validation、Flyway、MySQL Connector/J、Actuator 与 Micrometer Prometheus。前端为 Vue 3.5、TypeScript 5.9、Pinia 3、Vue Router 4、Vite 6 和 Ant Design Vue 4.2。
 
-Controller 和 Service 不直接使用 JdbcTemplate。SQL 参数全部绑定，动态表名只从固定允许集合中选择。前端列表请求带递增序号（`composables.ts`），切换授权域、翻页或重复查询时丢弃过时响应，避免旧域数据覆盖新域。权限诊断页在用户、授权域、激活角色或待校验权限变化时清空结果并丢弃仍在途的诊断；角色成员抽屉在切换角色或关闭时清空编辑状态，成员列表加载成功前不能添加、移除或保存，保存只提交到加载时的角色与授权域。
+Controller 和 Service 不直接访问持久化层的查询接口，持久化集中在 DAO；应用代码不写原生 SQL，JPQL 参数全部绑定，动态实体名只从固定允许集合中选择。Hibernate 以 `validate` 模式启动，实体与 Flyway 建立的表结构不一致时拒绝启动。前端列表请求带递增序号（`composables.ts`），切换授权域、翻页或重复查询时丢弃过时响应，避免旧域数据覆盖新域。权限诊断页在用户、授权域、激活角色或待校验权限变化时清空结果并丢弃仍在途的诊断；角色成员抽屉在切换角色或关闭时清空编辑状态，成员列表加载成功前不能添加、移除或保存，保存只提交到加载时的角色与授权域。
 
 ## 11. 验证范围与限制
 
