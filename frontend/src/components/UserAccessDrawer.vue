@@ -5,6 +5,7 @@ import { errorText, get, send } from '../api'
 import { expiringSoon, fmt } from '../labels'
 import { useHub } from '../store'
 import type { AccessDomain, ActiveContext, UserAccess } from '../types'
+import GuardedButton from './GuardedButton.vue'
 
 const open = defineModel<boolean>('open', { required: true })
 const props = defineProps<{ userId?: number }>()
@@ -68,7 +69,7 @@ function revoke() {
     <template #extra>
       <a-space>
         <a-button @click="load">刷新</a-button>
-        <a-button v-if="hub.can('user.manage')" danger :disabled="!data" @click="revoke">强制下线</a-button>
+        <GuardedButton fn="user.manage" danger :disabled="!data" @click="revoke">强制下线</GuardedButton>
       </a-space>
     </template>
     <a-spin :spinning="loading">

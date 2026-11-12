@@ -4,17 +4,17 @@ import { Modal, message, type TableColumnsType } from 'ant-design-vue'
 import { errorText, get, send, type PageResult } from '../api'
 import { attempt, usePaged } from '../composables'
 import { fmt, reviewDecision } from '../labels'
-import { useHub } from '../store'
 import type { AccessReview, ReviewItem } from '../types'
+import GuardedButton from './GuardedButton.vue'
+import GuardedLink from './GuardedLink.vue'
 
 const open = defineModel<boolean>('open', { required: true })
 const props = defineProps<{ review?: AccessReview }>()
 const emit = defineEmits<{ (e: 'changed'): void }>()
-const hub = useHub()
 // The row passed in is a snapshot from the list; the drawer keeps its own copy current after every change.
 const summary = ref<AccessReview>()
 watch(() => props.review, value => { summary.value = value }, { immediate: true })
-const canWrite = computed(() => !!summary.value && summary.value.status === 'OPEN' && hub.can('review.manage', summary.value.applicationId))
+const isOpen = computed(() => summary.value?.status === 'OPEN')
 async function refreshSummary() {
   const id = props.review?.id
   if (!id) return summary.value
@@ -86,7 +86,7 @@ async function close() {
     <template #extra>
       <a-space>
         <a-button @click="reload">刷新</a-button>
-        <a-button v-if="canWrite" danger :loading="closing" @click="close">关闭并应用</a-button>
+        <GuardedButton v-if="isOpen" fn="review.manage" :app="summary?.applicationId" danger :loading="closing" @click="close">关闭并应用</GuardedButton>
       </a-space>
     </template>
     <template v-if="summary">
@@ -119,10 +119,10 @@ async function close() {
           <span v-else class="muted">—</span>
         </template>
         <template v-else-if="column.key === 'actions'">
-          <a-space v-if="canWrite" :size="4">
-            <a @click="decide(record, 'KEEP')">保留</a>
+          <a-space v-if="isOpen" :size="4">
+            <GuardedLink fn="review.manage" :app="summary?.applicationId" @click="decide(record, 'KEEP')">保留</GuardedLink>
             <a-divider type="vertical" />
-            <a class="danger-link" @click="decide(record, 'REVOKE')">回收</a>
+            <GuardedLink fn="review.manage" :app="summary?.applicationId" class="danger-link" @click="decide(record, 'REVOKE')">回收</GuardedLink>
           </a-space>
         </template>
       </template>

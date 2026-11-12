@@ -13,6 +13,8 @@ import PageHead from '../components/PageHead.vue'
 import UserAccessDrawer from '../components/UserAccessDrawer.vue'
 import UserRolesDrawer from '../components/UserRolesDrawer.vue'
 import UserPicker from '../components/UserPicker.vue'
+import GuardedButton from '../components/GuardedButton.vue'
+import GuardedLink from '../components/GuardedLink.vue'
 
 const hub = useHub()
 const props = defineProps<{ embedded?: boolean; departmentId?: number }>()
@@ -151,15 +153,13 @@ async function runImport() {
 <template>
   <div class="page">
     <PageHead :title="embedded ? undefined : '用户'" description="维护用户资料和所属部门；选中用户可直接分配角色，多人授权使用「成员授权」。">
-      <a-button v-if="canGrant && embedded" @click="emit('navigate', 'assignments')">成员授权</a-button>
-      <a-button v-else-if="canGrant" :disabled="!filters.departmentId" @click="configurationOpen = true">为所选部门批量授权</a-button>
+      <GuardedButton v-if="embedded" fn="domain.assign" :allowed="canGrant" @click="emit('navigate', 'assignments')">成员授权</GuardedButton>
+      <GuardedButton v-else fn="domain.assign" :allowed="canGrant" :disabled="!filters.departmentId" @click="configurationOpen = true">为所选部门批量授权</GuardedButton>
       <a-button :loading="exporting" @click="exportUsers"><ExportOutlined />导出列表</a-button>
       <a-button :loading="table.loading.value" @click="table.load()"><ReloadOutlined />刷新</a-button>
-      <template v-if="hub.can('user.manage')">
-        <a-button v-if="embedded" @click="chooseExisting">添加已有用户</a-button>
-        <a-button @click="openImport"><ImportOutlined />批量导入</a-button>
-        <a-button type="primary" @click="edit()"><PlusOutlined />新建用户</a-button>
-      </template>
+      <GuardedButton v-if="embedded" fn="user.manage" @click="chooseExisting">添加已有用户</GuardedButton>
+      <GuardedButton fn="user.manage" @click="openImport"><ImportOutlined />批量导入</GuardedButton>
+      <GuardedButton fn="user.manage" type="primary" @click="edit()"><PlusOutlined />新建用户</GuardedButton>
     </PageHead>
     <a-card :bordered="false">
       <div class="toolbar">
@@ -180,25 +180,23 @@ async function runImport() {
           <template v-else-if="column.key === 'createdAt'"><a-tooltip :title="fmt(record.createdAt)">{{ record.createdAt?.slice(0, 10) }}</a-tooltip></template>
           <template v-else-if="column.key === 'actions'">
             <a-space :size="4">
-              <a v-if="canGrant" @click="grantRoles(record)">分配角色</a>
-              <a-divider v-if="canGrant" type="vertical" />
+              <GuardedLink fn="domain.assign" :allowed="canGrant" @click="grantRoles(record)">分配角色</GuardedLink>
+              <a-divider type="vertical" />
               <a @click="access(record)">授权详情</a>
-              <template v-if="hub.can('user.manage')">
-                <a-divider type="vertical" />
-                <a @click="edit(record)">编辑</a>
-                <a-divider type="vertical" />
-                <a-dropdown>
-                  <a>更多 <DownOutlined /></a>
-                  <template #overlay>
-                    <a-menu @click="(e: { key: string }) => more(record, e.key)">
-                      <a-menu-item key="toggle">{{ record.enabled ? '停用' : '启用' }}</a-menu-item>
-                      <a-menu-item key="revoke">强制下线</a-menu-item>
-                      <a-menu-divider />
-                      <a-menu-item key="delete" danger>删除</a-menu-item>
-                    </a-menu>
-                  </template>
-                </a-dropdown>
-              </template>
+              <a-divider type="vertical" />
+              <GuardedLink fn="user.manage" @click="edit(record)">编辑</GuardedLink>
+              <a-divider type="vertical" />
+              <a-dropdown :disabled="!hub.can('user.manage')">
+                <GuardedLink fn="user.manage">更多 <DownOutlined /></GuardedLink>
+                <template #overlay>
+                  <a-menu @click="(e: { key: string }) => more(record, e.key)">
+                    <a-menu-item key="toggle">{{ record.enabled ? '停用' : '启用' }}</a-menu-item>
+                    <a-menu-item key="revoke">强制下线</a-menu-item>
+                    <a-menu-divider />
+                    <a-menu-item key="delete" danger>删除</a-menu-item>
+                  </a-menu>
+                </template>
+              </a-dropdown>
             </a-space>
           </template>
         </template>

@@ -8,6 +8,8 @@ import { fmt, roleColor } from '../labels'
 import { useHub } from '../store'
 import type { AdminFunctionCode, AdminFunctionDefinition, AdminRoleDefinition } from '../types'
 import PageHead from '../components/PageHead.vue'
+import GuardedButton from '../components/GuardedButton.vue'
+import GuardedLink from '../components/GuardedLink.vue'
 
 const hub = useHub()
 const roles = useList<AdminRoleDefinition>(() => get<AdminRoleDefinition[]>('/admin/admin-roles'))
@@ -65,7 +67,7 @@ async function remove(row: AdminRoleDefinition) {
   <div class="page">
     <PageHead title="管理员角色" description="管理员角色是一组控制台功能；管理员账号选择一个角色，并单独设定可管理的软件。内置角色不可修改。">
       <a-button :loading="roles.loading.value" @click="roles.load()"><ReloadOutlined />刷新</a-button>
-      <a-button v-if="canEdit" type="primary" @click="edit()"><PlusOutlined />新建角色</a-button>
+      <GuardedButton fn="role.manage" type="primary" @click="edit()"><PlusOutlined />新建角色</GuardedButton>
     </PageHead>
     <a-card :bordered="false">
       <a-table :columns="columns" :data-source="roles.rows.value" row-key="code" size="small" :loading="roles.loading.value" :scroll="{ x: 1000 }" :pagination="false">
@@ -82,12 +84,11 @@ async function remove(row: AdminRoleDefinition) {
           <template v-else-if="column.key === 'actions'">
             <a-space :size="4">
               <a @click="edit(record)">{{ canEdit && !record.builtin ? '编辑' : '查看' }}</a>
-              <template v-if="canEdit && !record.builtin">
+              <template v-if="!record.builtin">
                 <a-divider type="vertical" />
-                <a-popconfirm title="确定删除该角色？" ok-text="删除" cancel-text="取消" :ok-button-props="{ danger: true }" :disabled="record.accountCount > 0" @confirm="remove(record)">
-                  <a-tooltip :title="record.accountCount > 0 ? '仍有管理员账号使用该角色' : undefined">
-                    <a :class="record.accountCount > 0 ? 'muted' : 'danger-link'">删除</a>
-                  </a-tooltip>
+                <a-popconfirm title="确定删除该角色？" ok-text="删除" cancel-text="取消" :ok-button-props="{ danger: true }" :disabled="!canEdit || record.accountCount > 0" @confirm="remove(record)">
+                  <GuardedLink fn="role.manage" :allowed="canEdit && record.accountCount === 0"
+                               :reason="canEdit ? '仍有管理员账号使用该角色' : undefined" class="danger-link">删除</GuardedLink>
                 </a-popconfirm>
               </template>
             </a-space>

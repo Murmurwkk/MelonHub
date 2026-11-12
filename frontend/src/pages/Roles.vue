@@ -15,8 +15,11 @@ import DomainEmpty from '../components/DomainEmpty.vue'
 import ReadonlyHint from '../components/ReadonlyHint.vue'
 import RoleMembersDrawer from '../components/RoleMembersDrawer.vue'
 import PermissionEditor from '../components/PermissionEditor.vue'
+import GuardedButton from '../components/GuardedButton.vue'
+import GuardedLink from '../components/GuardedLink.vue'
 
 const scope = useAuthorizationScope()
+const transferDenied = computed(() => hub.denial('domain.transfer', scope.applicationId) || '当前账号不能管理所选软件')
 const props = defineProps<{ embedded?: boolean }>()
 const emit = defineEmits<{ navigate: [tab: string] }>()
 const hub = useHub()
@@ -205,12 +208,12 @@ async function copy() {
           <a-menu @click="(e: { key: string }) => headAction(e.key)">
             <a-menu-item key="export"><ExportOutlined /> 导出本部门清单</a-menu-item>
             <a-menu-item key="export-all"><ExportOutlined /> 导出全部部门清单</a-menu-item>
-            <a-menu-item v-if="scope.canTransfer" key="import"><ImportOutlined /> 导入清单</a-menu-item>
-            <a-menu-item v-if="scope.canTransfer" key="copy" :disabled="copySources.length === 0"><CopyOutlined /> 从其他部门复制</a-menu-item>
+            <a-menu-item key="import" :disabled="!scope.canTransfer" :title="scope.canTransfer ? undefined : transferDenied"><ImportOutlined /> 导入清单</a-menu-item>
+            <a-menu-item key="copy" :disabled="!scope.canTransfer || copySources.length === 0" :title="scope.canTransfer ? undefined : transferDenied"><CopyOutlined /> 从其他部门复制</a-menu-item>
           </a-menu>
         </template>
       </a-dropdown>
-      <a-button v-if="scope.canConfigure" type="primary" @click="edit()"><PlusOutlined />新建角色</a-button>
+      <GuardedButton v-if="scope.hasDomain" fn="domain.configure" :allowed="scope.canConfigure" type="primary" @click="edit()"><PlusOutlined />新建角色</GuardedButton>
     </PageHead>
     <DomainEmpty v-if="!scope.hasDomain" />
     <template v-else>
@@ -226,7 +229,7 @@ async function copy() {
             <a-empty :image-style="{ height: '60px' }"
                      :description="keyword || status ? '没有匹配的角色' : '还没有角色。新建后可直接添加权限，再分配给部门成员。'">
               <a-space v-if="!keyword && !status">
-                <a-button v-if="scope.canConfigure" type="primary" @click="edit()">新建角色</a-button>
+                <GuardedButton fn="domain.configure" :allowed="scope.canConfigure" type="primary" @click="edit()">新建角色</GuardedButton>
               </a-space>
             </a-empty>
           </template>
@@ -244,20 +247,18 @@ async function copy() {
                 <a @click="grant(record)">{{ scope.canConfigure ? '配置权限' : '查看权限' }}</a>
                 <a-divider type="vertical" />
                 <a @click="showMembers(record)">成员</a>
-                <template v-if="scope.canConfigure">
-                  <a-divider type="vertical" />
-                  <a-dropdown>
-                    <a>更多 <DownOutlined /></a>
-                    <template #overlay>
-                      <a-menu @click="(e: { key: string }) => more(record, e.key)">
-                        <a-menu-item key="edit">编辑</a-menu-item>
-                        <a-menu-item key="toggle">{{ record.enabled ? '停用' : '启用' }}</a-menu-item>
-                        <a-menu-divider />
-                        <a-menu-item key="delete" danger>删除</a-menu-item>
-                      </a-menu>
-                    </template>
-                  </a-dropdown>
-                </template>
+                <a-divider type="vertical" />
+                <a-dropdown :disabled="!scope.canConfigure">
+                  <GuardedLink fn="domain.configure" :allowed="scope.canConfigure">更多 <DownOutlined /></GuardedLink>
+                  <template #overlay>
+                    <a-menu @click="(e: { key: string }) => more(record, e.key)">
+                      <a-menu-item key="edit">编辑</a-menu-item>
+                      <a-menu-item key="toggle">{{ record.enabled ? '停用' : '启用' }}</a-menu-item>
+                      <a-menu-divider />
+                      <a-menu-item key="delete" danger>删除</a-menu-item>
+                    </a-menu>
+                  </template>
+                </a-dropdown>
               </a-space>
             </template>
           </template>
@@ -277,14 +278,12 @@ async function copy() {
              :ok-button-props="{ disabled: !scope.canConfigure }">
       <template #footer>
         <a-button @click="grantOpen = false">关闭</a-button>
-        <template v-if="scope.canConfigure">
-          <a-button :loading="granting" @click="saveGrant()">保存</a-button>
-          <a-button type="primary" :loading="granting" @click="saveGrant(true)">保存并分配成员</a-button>
-        </template>
+        <GuardedButton fn="domain.configure" :allowed="scope.canConfigure" :loading="granting" @click="saveGrant()">保存</GuardedButton>
+        <GuardedButton fn="domain.configure" :allowed="scope.canConfigure" type="primary" :loading="granting" @click="saveGrant(true)">保存并分配成员</GuardedButton>
       </template>
       <p class="muted">保存后立即生效：拥有该角色的用户在下一次权限校验时按新的权限集合判定。</p>
       <a-space class="block-gap">
-        <a-button v-if="scope.canConfigure" size="small" @click="permissionOpen = true">新建权限并勾选</a-button>
+        <GuardedButton fn="domain.configure" :allowed="scope.canConfigure" size="small" @click="permissionOpen = true">新建权限并勾选</GuardedButton>
         <a-button size="small" :disabled="!scope.canConfigure" @click="grantKeys = transferData.map(p => p.key)">全选权限</a-button>
         <a-button size="small" :disabled="!scope.canConfigure" @click="grantKeys = []">清空权限</a-button>
       </a-space>

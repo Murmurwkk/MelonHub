@@ -13,6 +13,8 @@ import DomainEmpty from '../components/DomainEmpty.vue'
 import ReadonlyHint from '../components/ReadonlyHint.vue'
 import PermissionHoldersDrawer from '../components/PermissionHoldersDrawer.vue'
 import PermissionEditor from '../components/PermissionEditor.vue'
+import GuardedButton from '../components/GuardedButton.vue'
+import GuardedLink from '../components/GuardedLink.vue'
 
 const scope = useAuthorizationScope()
 defineProps<{ embedded?: boolean }>()
@@ -55,7 +57,7 @@ function exportRows() {
     <PageHead :title="embedded ? undefined : '权限'">
       <a-button :disabled="!scope.hasDomain" @click="exportRows"><ExportOutlined />导出列表</a-button>
       <a-button :disabled="!scope.hasDomain" @click="list.load()"><ReloadOutlined />刷新</a-button>
-      <a-button v-if="scope.canConfigure" type="primary" @click="edit()"><PlusOutlined />新建权限</a-button>
+      <GuardedButton v-if="scope.hasDomain" fn="domain.configure" :allowed="scope.canConfigure" type="primary" @click="edit()"><PlusOutlined />新建权限</GuardedButton>
     </PageHead>
     <DomainEmpty v-if="!scope.hasDomain" />
     <template v-else>
@@ -74,13 +76,13 @@ function exportRows() {
               <a-space :size="4">
                 <a @click="showHolders(record)">使用者</a>
               </a-space>
-              <a-space v-if="scope.canConfigure" :size="4">
+              <a-space :size="4">
                 <a-divider type="vertical" />
-                <a @click="edit(record)">编辑</a>
+                <GuardedLink fn="domain.configure" :allowed="scope.canConfigure" @click="edit(record)">编辑</GuardedLink>
                 <a-divider type="vertical" />
-                <a-popconfirm :title="record.roleCount ? `有 ${record.roleCount} 个角色包含该权限，删除后它们立即失去该权限。确定删除？` : '确定删除该权限？'"
+                <a-popconfirm :disabled="!scope.canConfigure" :title="record.roleCount ? `有 ${record.roleCount} 个角色包含该权限，删除后它们立即失去该权限。确定删除？` : '确定删除该权限？'"
                               ok-text="删除" cancel-text="取消" :ok-button-props="{ danger: true }" @confirm="remove(record)">
-                  <a class="danger-link">删除</a>
+                  <GuardedLink fn="domain.configure" :allowed="scope.canConfigure" class="danger-link">删除</GuardedLink>
                 </a-popconfirm>
               </a-space>
             </template>

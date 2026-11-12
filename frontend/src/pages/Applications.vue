@@ -14,6 +14,8 @@ import KeysDrawer from '../components/KeysDrawer.vue'
 import SecretModal from '../components/SecretModal.vue'
 import WebhooksDrawer from '../components/WebhooksDrawer.vue'
 import AuthorizationDrawer from '../components/AuthorizationDrawer.vue'
+import GuardedButton from '../components/GuardedButton.vue'
+import GuardedLink from '../components/GuardedLink.vue'
 
 const hub = useHub(), router = useRouter(), route = useRoute()
 const keyword = ref(''), status = ref<string>(), loading = ref(false)
@@ -142,7 +144,7 @@ function exportRows() {
     <PageHead title="软件接入" description="选中软件，在配置抽屉中维护部门的角色与权限；配好一处后可复制到多个部门。">
       <a-button @click="exportRows"><ExportOutlined />导出列表</a-button>
       <a-button :loading="loading" @click="reload"><ReloadOutlined />刷新</a-button>
-      <a-button v-if="hub.can('application.manage')" type="primary" @click="edit()"><PlusOutlined />接入软件</a-button>
+      <GuardedButton fn="application.manage" type="primary" @click="edit()"><PlusOutlined />接入软件</GuardedButton>
     </PageHead>
     <a-card :bordered="false">
       <div class="toolbar">
@@ -174,21 +176,19 @@ function exportRows() {
               <a @click="manageKeys(record)">API Key</a>
               <a-divider type="vertical" />
               <a @click="manageHooks(record)">Webhook</a>
-              <template v-if="hub.can('application.manage')">
-                <a-divider type="vertical" />
-                <a-dropdown>
-                  <a>更多 <DownOutlined /></a>
-                  <template #overlay>
-                    <a-menu @click="(e: { key: string }) => more(record, e.key)">
-                      <a-menu-item key="edit">编辑</a-menu-item>
-                      <a-menu-item key="limit">限流</a-menu-item>
-                      <a-menu-item key="toggle">{{ record.enabled ? '停用' : '启用' }}</a-menu-item>
-                      <a-menu-divider />
-                      <a-menu-item key="delete" danger>删除</a-menu-item>
-                    </a-menu>
-                  </template>
-                </a-dropdown>
-              </template>
+              <a-divider type="vertical" />
+              <a-dropdown :disabled="!hub.can('application.manage')">
+                <GuardedLink fn="application.manage">更多 <DownOutlined /></GuardedLink>
+                <template #overlay>
+                  <a-menu @click="(e: { key: string }) => more(record, e.key)">
+                    <a-menu-item key="edit">编辑</a-menu-item>
+                    <a-menu-item key="limit">限流</a-menu-item>
+                    <a-menu-item key="toggle">{{ record.enabled ? '停用' : '启用' }}</a-menu-item>
+                    <a-menu-divider />
+                    <a-menu-item key="delete" danger>删除</a-menu-item>
+                  </a-menu>
+                </template>
+              </a-dropdown>
             </a-space>
           </template>
         </template>

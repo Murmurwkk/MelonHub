@@ -14,6 +14,8 @@ import DomainEmpty from '../components/DomainEmpty.vue'
 import ReadonlyHint from '../components/ReadonlyHint.vue'
 import UserRolesForm from '../components/UserRolesForm.vue'
 import BatchRolesModal from '../components/BatchRolesModal.vue'
+import GuardedButton from '../components/GuardedButton.vue'
+import GuardedLink from '../components/GuardedLink.vue'
 
 const scope = useAuthorizationScope()
 const props = defineProps<{ embedded?: boolean }>()
@@ -92,8 +94,8 @@ async function save() {
           <span class="muted">本部门共 {{ table.total.value }} 名成员</span>
           <a @click="navigate('members')">管理本部门成员</a>
         </div>
-        <div v-if="scope.canAssign" class="toolbar">
-          <a-button type="primary" :disabled="!selected.length" @click="bulkOpen = true">批量分配软件角色</a-button>
+        <div class="toolbar">
+          <GuardedButton fn="domain.assign" :allowed="scope.canAssign" type="primary" :disabled="!selected.length" @click="bulkOpen = true">批量分配软件角色</GuardedButton>
           <span class="muted">已选 {{ selected.length }} 名成员，可跨页勾选</span>
           <a-button v-if="selected.length" type="link" @click="selected = []">清空选择</a-button>
           <a v-if="!roles.rows.value.length" @click="navigate('roles')">先创建角色并配置权限</a>
@@ -111,7 +113,7 @@ async function save() {
                 <span v-if="expiryOf(record, id)" :title="`到期：${fmt(expiryOf(record, id))}`"> · 至 {{ dayjs(expiryOf(record, id)).format('MM-DD') }}</span>
               </a-tag>
             </template>
-            <template v-else-if="column.key === 'actions'"><a v-if="scope.canAssign" @click="edit(record)">个别调整</a></template>
+            <template v-else-if="column.key === 'actions'"><GuardedLink fn="domain.assign" :allowed="scope.canAssign" @click="edit(record)">个别调整</GuardedLink></template>
           </template>
         </a-table>
       </a-card>

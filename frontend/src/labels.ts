@@ -1,4 +1,14 @@
 import dayjs from 'dayjs'
+import type { AdminFunctionCode } from './types'
+
+/** Names of the console functions, as in the admin_functions table (V6). */
+export const functionLabels: Record<AdminFunctionCode, string> = {
+  'org.view': '查看部门、用户与软件', 'department.manage': '维护部门', 'user.manage': '维护用户', 'application.manage': '维护软件',
+  'application.credentials': '管理 API Key 与 Webhook', 'domain.view': '查看授权配置', 'domain.configure': '配置角色与权限',
+  'domain.assign': '分配用户角色', 'domain.transfer': '复制配置与导入清单', 'governance.view': '查看审批与复核',
+  'request.approve': '审批角色申请', 'review.manage': '发起与处理权限复核', 'audit.view': '查看与校验审计日志',
+  'system.view': '查看系统状态', 'account.manage': '管理管理员账号', 'role.manage': '管理管理员角色',
+}
 
 /** Tag colours of the built-in administrator roles; roles defined in the console use the default colour. */
 const builtinRoleColors: Record<string, string> = { SUPER_ADMIN: 'red', ADMIN: 'blue', APP_ADMIN: 'cyan', AUDITOR: 'default' }

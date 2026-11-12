@@ -8,6 +8,8 @@ import { deliveryStatus, fmt, fromNow, webhookEventLabels, webhookEventOptions }
 import { useHub } from '../store'
 import type { Application, Webhook, WebhookDelivery } from '../types'
 import SecretModal from './SecretModal.vue'
+import GuardedButton from './GuardedButton.vue'
+import GuardedLink from './GuardedLink.vue'
 
 const open = defineModel<boolean>('open', { required: true })
 const props = defineProps<{ application?: Application }>()
@@ -101,7 +103,7 @@ const deliveryColumns: TableColumnsType<WebhookDelivery> = [
 <template>
   <a-drawer v-model:open="open" :title="`Webhook：${application?.name ?? ''}`" width="1080" destroy-on-close>
     <template #extra>
-      <a-button v-if="canWrite" type="primary" @click="edit()"><PlusOutlined />新建 Webhook</a-button>
+      <GuardedButton fn="application.credentials" :allowed="canWrite" type="primary" @click="edit()"><PlusOutlined />新建 Webhook</GuardedButton>
     </template>
     <a-table :columns="columns" :data-source="hooks.rows.value" row-key="id" size="small" :loading="hooks.loading.value" :pagination="false">
       <template #bodyCell="{ column, record }">
@@ -116,16 +118,14 @@ const deliveryColumns: TableColumnsType<WebhookDelivery> = [
         <template v-else-if="column.key === 'actions'">
           <a-space :size="4">
             <a @click="showDeliveries(record)">投递记录</a>
-            <template v-if="canWrite">
-              <a-divider type="vertical" />
-              <a @click="test(record)">测试</a>
-              <a-divider type="vertical" />
-              <a @click="edit(record)">编辑</a>
-              <a-divider type="vertical" />
-              <a-popconfirm title="删除后不再接收该软件的事件通知，确定删除？" ok-text="删除" cancel-text="取消" :ok-button-props="{ danger: true }" @confirm="remove(record)">
-                <a class="danger-link">删除</a>
-              </a-popconfirm>
-            </template>
+            <a-divider type="vertical" />
+            <GuardedLink fn="application.credentials" :allowed="canWrite" @click="test(record)">测试</GuardedLink>
+            <a-divider type="vertical" />
+            <GuardedLink fn="application.credentials" :allowed="canWrite" @click="edit(record)">编辑</GuardedLink>
+            <a-divider type="vertical" />
+            <a-popconfirm :disabled="!canWrite" title="删除后不再接收该软件的事件通知，确定删除？" ok-text="删除" cancel-text="取消" :ok-button-props="{ danger: true }" @confirm="remove(record)">
+              <GuardedLink fn="application.credentials" :allowed="canWrite" class="danger-link">删除</GuardedLink>
+            </a-popconfirm>
           </a-space>
         </template>
       </template>
@@ -157,7 +157,7 @@ const deliveryColumns: TableColumnsType<WebhookDelivery> = [
     <a-drawer v-model:open="deliveriesOpen" :title="`投递记录：${deliveriesHook?.name ?? ''}`" width="980" destroy-on-close>
       <template #extra>
         <a-space>
-          <a-button size="small" :disabled="!canWrite" @click="deliveriesHook && test(deliveriesHook)"><ThunderboltOutlined />发送测试事件</a-button>
+          <GuardedButton fn="application.credentials" :allowed="canWrite" size="small" @click="deliveriesHook && test(deliveriesHook)"><ThunderboltOutlined />发送测试事件</GuardedButton>
           <a-button size="small" @click="deliveries.load()">刷新</a-button>
         </a-space>
       </template>

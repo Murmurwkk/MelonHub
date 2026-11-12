@@ -7,6 +7,7 @@ import Permissions from '../pages/Permissions.vue'
 import Assignments from '../pages/Assignments.vue'
 import Users from '../pages/Users.vue'
 import DomainCopyModal from './DomainCopyModal.vue'
+import GuardedButton from './GuardedButton.vue'
 
 const open = defineModel<boolean>('open', { required: true })
 const props = defineProps<{ departmentId?: number; applicationId?: number; initialTab?: string }>()
@@ -45,7 +46,7 @@ function afterOpenChange(value: boolean) { if (!value) hub.loadLists() }
   <a-drawer v-model:open="open" :title="title" width="min(1180px, 94vw)" destroy-on-close :push="false"
             root-class-name="authorization-drawer" @after-open-change="afterOpenChange">
     <template #extra>
-      <a-button v-if="canCopy && hub.departments.length > 1" @click="copyOpen = true">{{ props.applicationId ? '复制到多个部门' : '批量配置软件' }}</a-button>
+      <GuardedButton v-if="hub.departments.length > 1" fn="domain.transfer" :allowed="canCopy" @click="copyOpen = true">{{ props.applicationId ? '复制到多个部门' : '批量配置软件' }}</GuardedButton>
     </template>
     <div class="toolbar authorization-scope">
       <template v-if="props.applicationId">

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { get, session } from './api'
+import { functionLabels } from './labels'
 import type { AdminFunctionCode, Application, Department, Health, Principal } from './types'
 
 const DEPARTMENT = 'melonhub-department', APPLICATION = 'melonhub-application'
@@ -25,6 +26,11 @@ export const useHub = defineStore('hub', () => {
   function can(fn: AdminFunctionCode, application?: number) {
     if (!functions.value.has(fn)) return false
     return application === undefined || !!me.value?.allApplications || !!me.value?.applicationIds.includes(application)
+  }
+  /** Why the operator may not use the function (in that application), or '' when it may. */
+  function denial(fn: AdminFunctionCode, application?: number) {
+    if (!functions.value.has(fn)) return `当前角色没有“${functionLabels[fn]}”功能`
+    return can(fn, application) ? '' : '当前账号不能管理该软件'
   }
   const canConfigure = computed(() => hasDomain.value && can('domain.configure', applicationId.value))
   const canAssign = computed(() => hasDomain.value && can('domain.assign', applicationId.value))
@@ -71,7 +77,7 @@ export const useHub = defineStore('hub', () => {
 
   return {
     me, departments, applications, departmentId, applicationId, health, department, application, hasDomain, domainKey, domainQuery,
-    can, canConfigure, canAssign, canTransfer, departmentName, applicationName, departmentOptions, applicationOptions,
+    can, denial, canConfigure, canAssign, canTransfer, departmentName, applicationName, departmentOptions, applicationOptions,
     setDomain, loadLists, refreshHealth, signIn, signOut,
   }
 })

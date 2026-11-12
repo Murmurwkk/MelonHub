@@ -170,6 +170,8 @@ code {
 .warn-text { color: var(--mh-warn); }
 .danger-link, .danger-link:visited { color: var(--mh-danger); }
 .danger-link:hover { color: var(--mh-danger); opacity: 0.8; }
+/* Actions the signed-in role cannot use stay visible, greyed out (see GuardedLink). */
+.link-disabled { color: var(--mh-text-3); cursor: not-allowed; }
 .cell-main { line-height: 20px; }
 .cell-sub { overflow: hidden; color: var(--mh-text-3); font-size: 12px; line-height: 18px; text-overflow: ellipsis; white-space: nowrap; }
 .code-tag { font-family: var(--mh-mono); font-size: 12px; }

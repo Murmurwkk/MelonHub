@@ -8,6 +8,7 @@ import { fmt, requestStatus } from '../labels'
 import { useHub } from '../store'
 import type { AccessRequest } from '../types'
 import PageHead from '../components/PageHead.vue'
+import GuardedLink from '../components/GuardedLink.vue'
 
 const hub = useHub()
 const filters = reactive<{ status?: string; keyword: string; applicationId?: number }>({ keyword: '', applicationId: hub.applicationId || undefined })
@@ -112,10 +113,10 @@ async function save() {
             <span v-else class="muted">—</span>
           </template>
           <template v-else-if="column.key === 'actions'">
-            <a-space v-if="record.status === 'PENDING' && hub.can('request.approve', record.applicationId)" :size="4">
-              <a @click="approve(record)">批准</a>
+            <a-space v-if="record.status === 'PENDING'" :size="4">
+              <GuardedLink fn="request.approve" :app="record.applicationId" @click="approve(record)">批准</GuardedLink>
               <a-divider type="vertical" />
-              <a class="danger-link" @click="reject(record)">驳回</a>
+              <GuardedLink fn="request.approve" :app="record.applicationId" class="danger-link" @click="reject(record)">驳回</GuardedLink>
             </a-space>
             <span v-else class="muted">—</span>
           </template>

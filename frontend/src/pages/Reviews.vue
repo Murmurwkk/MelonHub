@@ -9,6 +9,7 @@ import { useHub } from '../store'
 import type { AccessReview } from '../types'
 import PageHead from '../components/PageHead.vue'
 import ReviewDrawer from '../components/ReviewDrawer.vue'
+import GuardedButton from '../components/GuardedButton.vue'
 
 const hub = useHub()
 const filters = reactive<{ status?: string; applicationId?: number }>({ applicationId: hub.applicationId || undefined })
@@ -52,7 +53,7 @@ const createableApps = computed(() => hub.applicationOptions.filter(o => hub.can
   <div class="page">
     <PageHead title="权限复核" description="跨部门查看复核，使用下方的软件和状态筛选。每次复核的部门范围在创建时指定。">
       <a-button :loading="list.loading.value" @click="list.load()"><ReloadOutlined />刷新</a-button>
-      <a-button v-if="createableApps.length" type="primary" @click="create"><PlusOutlined />发起复核</a-button>
+      <GuardedButton fn="review.manage" :allowed="createableApps.length > 0" type="primary" @click="create"><PlusOutlined />发起复核</GuardedButton>
     </PageHead>
     <a-card :bordered="false">
       <div class="toolbar">

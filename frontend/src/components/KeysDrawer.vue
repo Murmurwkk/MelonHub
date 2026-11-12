@@ -8,6 +8,8 @@ import { fmt, fromNow, keyStatus } from '../labels'
 import { useHub } from '../store'
 import type { ApiKey, Application } from '../types'
 import SecretModal from './SecretModal.vue'
+import GuardedButton from './GuardedButton.vue'
+import GuardedLink from './GuardedLink.vue'
 
 const open = defineModel<boolean>('open', { required: true })
 const props = defineProps<{ application?: Application }>()
@@ -80,9 +82,9 @@ function rotate() {
 <template>
   <a-drawer v-model:open="open" :title="`API Key：${application?.name ?? ''}`" width="980" destroy-on-close>
     <template #extra>
-      <a-space v-if="canWrite">
-        <a-button danger @click="rotate">紧急轮换</a-button>
-        <a-button type="primary" :disabled="activeCount >= 10" @click="create"><PlusOutlined />新建密钥</a-button>
+      <a-space>
+        <GuardedButton fn="application.credentials" :allowed="canWrite" danger @click="rotate">紧急轮换</GuardedButton>
+        <GuardedButton fn="application.credentials" :allowed="canWrite" type="primary" :disabled="activeCount >= 10" @click="create"><PlusOutlined />新建密钥</GuardedButton>
       </a-space>
     </template>
     <p class="hint">轮换时先新建密钥并在业务后端替换，确认旧密钥的“最近使用”不再更新后再吊销。每个软件最多 10 个有效密钥。</p>
@@ -94,8 +96,8 @@ function rotate() {
         <template v-else-if="column.key === 'expiresAt'">{{ record.expiresAt ? fmt(record.expiresAt) : '永不过期' }}</template>
         <template v-else-if="column.key === 'lastUsedAt'"><a-tooltip :title="fmt(record.lastUsedAt)">{{ record.lastUsedAt ? fromNow(record.lastUsedAt) : '从未使用' }}</a-tooltip></template>
         <template v-else-if="column.key === 'actions'">
-          <a-popconfirm v-if="canWrite && record.status === 'ACTIVE'" title="吊销后使用该密钥的请求立即失败，确定吊销？" ok-text="吊销" cancel-text="取消" :ok-button-props="{ danger: true }" @confirm="revoke(record)">
-            <a class="danger-link">吊销</a>
+          <a-popconfirm v-if="record.status === 'ACTIVE'" :disabled="!canWrite" title="吊销后使用该密钥的请求立即失败，确定吊销？" ok-text="吊销" cancel-text="取消" :ok-button-props="{ danger: true }" @confirm="revoke(record)">
+            <GuardedLink fn="application.credentials" :allowed="canWrite" class="danger-link">吊销</GuardedLink>
           </a-popconfirm>
         </template>
       </template>

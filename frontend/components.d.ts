@@ -68,6 +68,8 @@ declare module 'vue' {
     DomainPicker: typeof import('./src/components/DomainPicker.vue')['default']
     EmptyState: typeof import('./src/components/EmptyState.vue')['default']
     GlobalSearch: typeof import('./src/components/GlobalSearch.vue')['default']
+    GuardedButton: typeof import('./src/components/GuardedButton.vue')['default']
+    GuardedLink: typeof import('./src/components/GuardedLink.vue')['default']
     KeysDrawer: typeof import('./src/components/KeysDrawer.vue')['default']
     LoginView: typeof import('./src/components/LoginView.vue')['default']
     MfaModal: typeof import('./src/components/MfaModal.vue')['default']

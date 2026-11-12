@@ -6,6 +6,8 @@ import { attempt } from '../composables'
 import { useHub } from '../store'
 import type { Member, Role, User } from '../types'
 import UserPicker from './UserPicker.vue'
+import GuardedButton from './GuardedButton.vue'
+import GuardedLink from './GuardedLink.vue'
 
 const open = defineModel<boolean>('open', { required: true })
 const props = defineProps<{ role?: Role; departmentId: number; applicationId: number; embedded?: boolean }>()
@@ -89,9 +91,9 @@ const columns: TableColumnsType<Member> = [
 <template>
   <a-drawer v-model:open="open" :title="`角色成员：${role?.name ?? ''}`" width="720" destroy-on-close>
     <template #extra>
-      <a-space v-if="canWrite">
-        <a-button :disabled="!ready || !dirty || saving" @click="load">放弃修改</a-button>
-        <a-button type="primary" :disabled="!ready || !dirty" :loading="saving" @click="save">保存</a-button>
+      <a-space>
+        <GuardedButton fn="domain.assign" :allowed="canWrite" :disabled="!ready || !dirty || saving" @click="load">放弃修改</GuardedButton>
+        <GuardedButton fn="domain.assign" :allowed="canWrite" type="primary" :disabled="!ready || !dirty" :loading="saving" @click="save">保存</GuardedButton>
       </a-space>
     </template>
     <p class="hint">{{ hub.departmentName(departmentId) }} × {{ hub.applicationName(applicationId) }}。只能添加该部门的成员，保存后变动用户的现有上下文失效。</p>
@@ -99,15 +101,15 @@ const columns: TableColumnsType<Member> = [
       <a v-if="embedded" @click="open = false; emit('navigate', 'assignments')">成员授权</a>
       <router-link v-else to="/assignments" @click="open = false">用户授权</router-link>。
     </p>
-    <div v-if="canWrite" class="toolbar">
-      <UserPicker v-model:value="adding" :disabled="!ready" multiple @picks="(users: User[]) => (picked = users)" :department-id="departmentId" :exclude="members.map(m => m.id)" placeholder="搜索并选择要加入的部门成员" class="grow" />
-      <a-button :disabled="!ready || !adding.length" @click="add">添加</a-button>
+    <div class="toolbar">
+      <UserPicker v-model:value="adding" :disabled="!ready || !canWrite" multiple @picks="(users: User[]) => (picked = users)" :department-id="departmentId" :exclude="members.map(m => m.id)" placeholder="搜索并选择要加入的部门成员" class="grow" />
+      <GuardedButton fn="domain.assign" :allowed="canWrite" :disabled="!ready || !adding.length" @click="add">添加</GuardedButton>
     </div>
     <a-table :columns="columns" :data-source="members" row-key="id" size="small" :loading="loading" :pagination="{ size: 'small', pageSize: 50, hideOnSinglePage: true }">
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'externalId'"><code>{{ record.externalId }}</code></template>
         <template v-else-if="column.key === 'enabled'"><a-badge :status="record.enabled ? 'success' : 'default'" :text="record.enabled ? '启用' : '停用'" /></template>
-        <template v-else-if="column.key === 'actions'"><a v-if="canWrite && ready" class="danger-link" @click="removeMember(record.id)">移除</a></template>
+        <template v-else-if="column.key === 'actions'"><GuardedLink v-if="ready" fn="domain.assign" :allowed="canWrite" class="danger-link" @click="removeMember(record.id)">移除</GuardedLink></template>
       </template>
       <template #emptyText><a-empty :description="ready ? '该角色还没有成员' : loading ? '正在加载' : '成员列表未能加载'" :image-style="{ height: '40px' }" /></template>
     </a-table>
