@@ -41,7 +41,7 @@ import org.springframework.transaction.annotation.Transactional;
 @ContextConfiguration(initializers=CloudTestDatabaseGuard.class)
 class SecurityIntegrationTest {
     private static final String PASSWORD = "Test-Only-Passw0rd";
-    private static final AdminPrincipal ROOT = new AdminPrincipal("security-test-root", "root", AdminPrincipal.SUPER_ADMIN, Set.of());
+    private static final AdminPrincipal ROOT = TestAdmins.superAdmin("security-test-root");
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper mapper;
     @Autowired RbacService r;

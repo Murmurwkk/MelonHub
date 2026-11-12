@@ -20,7 +20,7 @@ const form = ref<InstanceType<typeof UserRolesForm>>()
 let sequence = 0
 
 const departmentOptions = computed(() => (props.user?.departmentIds ?? []).map(id => ({ value: id, label: hub.departmentName(id) })))
-const canWrite = computed(() => hub.canWriteApp(applicationId.value))
+const canWrite = computed(() => hub.can('domain.assign', applicationId.value))
 
 watch(() => [open.value, props.user?.id], () => {
   sequence++

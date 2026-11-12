@@ -55,11 +55,11 @@ function exportRows() {
     <PageHead :title="embedded ? undefined : '权限'">
       <a-button :disabled="!scope.hasDomain" @click="exportRows"><ExportOutlined />导出列表</a-button>
       <a-button :disabled="!scope.hasDomain" @click="list.load()"><ReloadOutlined />刷新</a-button>
-      <a-button v-if="scope.canDomain" type="primary" @click="edit()"><PlusOutlined />新建权限</a-button>
+      <a-button v-if="scope.canConfigure" type="primary" @click="edit()"><PlusOutlined />新建权限</a-button>
     </PageHead>
     <DomainEmpty v-if="!scope.hasDomain" />
     <template v-else>
-      <ReadonlyHint />
+      <ReadonlyHint :editable="scope.canConfigure" />
       <a-card :bordered="false">
         <div class="toolbar">
           <a-input-search v-model:value="keyword" placeholder="搜索编码或名称" allow-clear class="toolbar-search" />
@@ -74,7 +74,7 @@ function exportRows() {
               <a-space :size="4">
                 <a @click="showHolders(record)">使用者</a>
               </a-space>
-              <a-space v-if="scope.canDomain" :size="4">
+              <a-space v-if="scope.canConfigure" :size="4">
                 <a-divider type="vertical" />
                 <a @click="edit(record)">编辑</a>
                 <a-divider type="vertical" />

@@ -215,16 +215,39 @@ POST /api/v1/access-requests
 
 两步验证采用 RFC 6238 TOTP（HMAC-SHA1、30 秒步长、6 位数字），兼容常见认证器应用，允许前后各一个步长的时钟偏差。启用后登录未带口令返回 `401 MFA_REQUIRED`，口令错误或已被使用返回 `401 MFA_INVALID`：同一时间步的口令登录成功后不能再次使用。已启用时再次调用 `setup` 返回 409，需先停用。丢失设备时由超级管理员重置（第 5.8 节）。
 
-### 5.2 管理员角色
+### 5.2 管理员角色与功能
 
-| 角色 | 平台数据（部门、用户、软件） | 授权域（角色、权限、分配） | API Key、Webhook | 管理员账号 |
-| --- | --- | --- | --- | --- |
-| `SUPER_ADMIN` 超级管理员 | 读写 | 全部软件读写 | 全部软件 | 可管理 |
-| `ADMIN` 平台管理员 | 读写 | 全部软件读写 | 全部软件 | 不可 |
-| `APP_ADMIN` 软件管理员 | 只读，软件列表只显示被授权的软件 | 仅被授权软件读写 | 仅被授权软件 | 不可 |
-| `AUDITOR` 审计员 | 只读 | 只读 | 只能查看列表 | 不可 |
+控制台权限**按功能配置**：每个管理接口属于一项功能，管理员角色是一组功能。管理员账号选择一个角色，并单独设定可管理的软件（全部软件，或指定的软件）。请求时先检查角色是否有该接口的功能，再检查涉及的软件是否在账号的可管理范围内；任一不满足返回 `403 FORBIDDEN`。功能变化在已登录管理员的下一次请求即生效，无需重新登录。没有声明功能的管理接口一律拒绝。
 
-审批、复核、清单导入属于授权域写操作，要求对该软件有写权限；批量导入用户和设置软件限流属于平台写操作，只有超级/平台管理员可以执行。越权请求返回 `403 FORBIDDEN`。管理员角色是平台自身的操作权限，与平台中管理的 RBAC0 业务数据相互独立。
+| 功能编码 | 名称 | 包含的接口 |
+| --- | --- | --- |
+| `org.view` | 查看部门、用户与软件 | 部门、用户、软件列表，用户导出与授权详情，全局搜索 |
+| `department.manage` | 维护部门 | 新建、修改、删除部门 |
+| `user.manage` | 维护用户 | 新建、修改、停用、删除用户，批量导入，强制下线 |
+| `application.manage` | 维护软件 | 接入、修改、停用、删除软件，软件限流 |
+| `application.credentials` | 管理 API Key 与 Webhook | 新建、吊销、轮换密钥；登记、修改、删除、测试 Webhook |
+| `domain.view` | 查看授权配置 | 角色、权限、成员、分配、概览、诊断、清单导出、权限反查、即将到期、密钥与 Webhook 列表 |
+| `domain.configure` | 配置角色与权限 | 角色与权限的增删改、启停，角色的权限勾选 |
+| `domain.assign` | 分配用户角色 | 用户角色、角色成员、批量追加 |
+| `domain.transfer` | 复制配置与导入清单 | 跨部门复制、权限清单导入 |
+| `governance.view` | 查看审批与复核 | 申请列表、复核列表与明细 |
+| `request.approve` | 审批角色申请 | 批准、驳回 |
+| `review.manage` | 发起与处理权限复核 | 发起复核、逐条决定、关闭复核 |
+| `audit.view` | 查看与校验审计日志 | 审计查询、导出、哈希链校验 |
+| `system.view` | 查看系统状态 | 系统状态看板 |
+| `account.manage` | 管理管理员账号 | 第 5.8 节全部接口，查看角色列表 |
+| `role.manage` | 管理管理员角色 | 第 5.13 节全部接口 |
+
+四个内置角色保持原有权限，不能修改或删除：
+
+| 角色 | 功能 |
+| --- | --- |
+| `SUPER_ADMIN` 超级管理员 | 全部 16 项 |
+| `ADMIN` 平台管理员 | 除 `account.manage`、`role.manage` 外的 14 项 |
+| `APP_ADMIN` 软件管理员 | 5 项查看功能与 `application.credentials`、`domain.configure`、`domain.assign`、`domain.transfer`、`request.approve`、`review.manage` |
+| `AUDITOR` 审计员 | 5 项查看功能：`org.view`、`domain.view`、`governance.view`、`audit.view`、`system.view` |
+
+升级时原软件管理员账号被设为“指定软件”，其余账号为“全部软件”。软件范围只限制按软件进行的操作（授权域、密钥、Webhook、审批、复核、清单）以及列表中显示的软件和审计记录；部门、用户等平台级功能不受软件范围限制。管理员角色是平台自身的操作权限，与平台中管理的 RBAC0 业务数据相互独立。
 
 ### 5.3 部门、软件与 API Key
 
@@ -364,19 +387,19 @@ POST /api/v1/access-requests
 
 `problem` 为第一处问题：`LINK_BROKEN`（与上一条衔接不上，通常是中间记录被删除）、`MODIFIED`（记录内容被修改）、`TAIL_MISSING`（链尾与封存表记录的不一致，最新的记录被删除）；`brokenAt`、`brokenSeq` 为出问题记录的 ID 与顺序号。一次未校验到链尾时 `complete` 为 false，用 `nextSeq` 作为下一次的 `fromSeq` 继续。按保留期清理旧审计时，最后一条被删除记录的哈希会保存为锚点，剩余的第一条与锚点衔接，因此清理不会被报告为断裂。V5 之后封存的记录使用带长度前缀、包含顺序号的规范化形式，文本在字段之间移动也会被发现；更早的记录按原形式校验。哈希链能发现记录被修改或删除；但它与数据保存在同一个数据库中，拥有数据库写权限的人可以重算整条链，因此不能代替导出到 SIEM 或 WORM 存储的外部存证。
 
-### 5.8 管理员账号（仅超级管理员）
+### 5.8 管理员账号（需要 `account.manage`）
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/admin/accounts` | 账号列表：角色、启用状态、锁定时间、最近登录、授权软件、是否启用两步验证 |
-| POST | `/api/admin/accounts` | `{"username":"ops.zhang","displayName":"张工","role":"APP_ADMIN","password":"12–100 个字符","enabled":true,"applicationIds":[3]}`；`applicationIds` 只对软件管理员有效 |
-| PUT | `/api/admin/accounts/{username}` | `{"displayName":"","role":"ADMIN","enabled":true,"applicationIds":[]}` |
+| GET | `/api/admin/accounts` | 账号列表：角色、启用状态、锁定时间、最近登录、软件范围（`allApplications`、`applicationIds`）、是否启用两步验证 |
+| POST | `/api/admin/accounts` | `{"username":"ops.zhang","displayName":"张工","role":"APP_ADMIN","password":"12–100 个字符","enabled":true,"allApplications":false,"applicationIds":[3]}`；`role` 为任一管理员角色编码 |
+| PUT | `/api/admin/accounts/{username}` | `{"displayName":"","role":"ADMIN","enabled":true,"allApplications":true}` |
 | PUT | `/api/admin/accounts/{username}/password` | `{"password":"12–100 个字符"}`，重置后该账号全部会话下线 |
 | POST | `/api/admin/accounts/{username}/unlock` | 解除登录锁定 |
 | POST | `/api/admin/accounts/{username}/mfa/reset` | 重置两步验证（设备丢失时使用），之后该账号仅凭密码登录，直到重新绑定 |
 | DELETE | `/api/admin/accounts/{username}` | 删除账号及其全部会话 |
 
-不能修改自己的角色、停用或删除自己；平台至少保留一个启用的超级管理员。修改角色或停用账号后，该账号的全部会话立即下线。账号名为 3–100 位字母、数字或 `_ . @ -`，不能以 `.` 开头；路径中直接使用账号名，`@` 与 `.` 不需要转义。密码规则与会话失效规则见第 5.1 节。
+`allApplications` 为 `false` 时账号只能管理 `applicationIds` 中的软件；省略 `allApplications` 时，提供 `applicationIds` 表示限定为这些软件，不提供表示全部软件。角色不存在返回 400。不能修改自己的角色、停用或删除自己；平台至少保留一个启用的超级管理员。修改角色或停用账号后，该账号的全部会话立即下线；修改软件范围在下一次请求生效。账号名为 3–100 位字母、数字或 `_ . @ -`，不能以 `.` 开头；路径中直接使用账号名，`@` 与 `.` 不需要转义。密码规则与会话失效规则见第 5.1 节。
 
 ### 5.9 审批中心
 
@@ -421,6 +444,18 @@ POST /api/v1/access-requests
 
 - `GET /api/admin/search?q=关键字`：按名称、编码、外部标识或邮箱搜索用户、部门、软件和角色，每类最多 5 条；软件和角色按调用者可见的软件过滤。`q` 为空或超过 64 个字符时返回空结果。
 - `GET /api/admin/system/status`：系统状态看板，返回版本、运行时长、Java 版本、缓存状态、数据库状态（`UP`/`DOWN`）与延迟，以及数据规模（`counts`）、待审批申请数（`pendingRequests`）、进行中的复核数（`openReviews`）、Webhook 待投递数（`webhookBacklog`）、7 天内到期的授权数（`expiringIn7Days`）和审计链封存状态（`audit`）。响应总是包含全部字段：数据库不可用或读取中途失败时，`database` 为 `DOWN`，需要读库的字段全部为 null，不会只返回其中一部分。
+
+### 5.13 管理员角色
+
+| 方法 | 路径 | 所需功能 | 说明 |
+| --- | --- | --- | --- |
+| GET | `/api/admin/admin-functions` | `account.manage` 或 `role.manage` | 功能清单：`code`、`name`、`category` |
+| GET | `/api/admin/admin-roles` | `account.manage` 或 `role.manage` | 角色列表：`code`、`name`、`description`、`builtin`、`functions`、`accountCount`、`createdAt` |
+| POST | `/api/admin/admin-roles` | `role.manage` | `{"code":"HELPDESK","name":"服务台","description":"","functions":["org.view","domain.view","domain.assign"]}`；编码为 2–32 位大写字母、数字或下划线 |
+| PUT | `/api/admin/admin-roles/{code}` | `role.manage` | `{"name":"服务台","description":"","functions":[...]}`，整体替换功能 |
+| DELETE | `/api/admin/admin-roles/{code}` | `role.manage` | 仍有账号使用时返回 409 并给出账号数 |
+
+内置角色不能修改或删除（400）。只能授予操作者自己拥有的功能，否则返回 403；未知功能编码返回 400。增删改记入审计（`ADMIN_ROLE_CREATED/UPDATED/DELETED`）。`/api/auth/login` 与 `/api/auth/me` 返回 `role`、`roleName`、`functions`、`allApplications`、`applicationIds`，控制台据此显示菜单和按钮。
 
 ## 6. 错误约定
 

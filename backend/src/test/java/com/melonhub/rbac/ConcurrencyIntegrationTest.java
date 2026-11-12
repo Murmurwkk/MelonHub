@@ -37,7 +37,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 @ContextConfiguration(initializers=CloudTestDatabaseGuard.class)
 class ConcurrencyIntegrationTest {
     private static final String ACTOR = "race-test";
-    private static final AdminPrincipal ROOT = new AdminPrincipal(ACTOR, "tester", AdminPrincipal.SUPER_ADMIN, Set.of());
+    private static final AdminPrincipal ROOT = TestAdmins.superAdmin(ACTOR);
     @Autowired AuthService auth;
     @Autowired RbacService r;
     @Autowired WebhookService webhooks;
@@ -50,7 +50,7 @@ class ConcurrencyIntegrationTest {
         auth.createAccount(new Requests.Account(username, "并发登录", "AUDITOR", password, true, null), ROOT);
         var pool = Executors.newFixedThreadPool(4);
         try {
-            var principal = new AdminPrincipal(username, "并发登录", "AUDITOR", Set.of());
+            var principal = TestAdmins.self(username, "并发登录", "AUDITOR");
             String secret = (String) auth.setupMfa(principal).get("secret");
             auth.confirmMfa(principal, Totp.codeAt(secret, Totp.currentStep()));
             String code = Totp.codeAt(secret, Totp.currentStep() + 1);

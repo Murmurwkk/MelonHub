@@ -84,7 +84,7 @@ async function exportCsv() {
 
 <template>
   <div class="page">
-    <PageHead title="审计日志" :description="hub.role === 'APP_ADMIN' ? '仅显示你管理的软件的记录' : undefined">
+    <PageHead title="审计日志" :description="!hub.me?.allApplications ? '仅显示你管理的软件的记录' : undefined">
       <a-button :loading="table.loading.value" @click="table.load()"><ReloadOutlined />刷新</a-button>
       <a-button :loading="exporting" @click="exportCsv"><DownloadOutlined />导出 CSV</a-button>
       <a-button @click="openVerify"><SafetyCertificateOutlined />校验链条</a-button>

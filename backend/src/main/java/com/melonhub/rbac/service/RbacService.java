@@ -47,11 +47,11 @@ public class RbacService {
     public RbacService(RbacDao dao, ContextDao contexts, PermissionCache cache, WebhookService webhooks, GovernanceDao governance,
                        PlatformTransactionManager transactionManager) {
         this.dao = dao; this.contexts = contexts; this.cache = cache; this.webhooks = webhooks; this.governance = governance;
-        // Called on its own, each attempt is a transaction of its own and rolling it back releases its locks.
-        // Inside a caller's transaction (the integration tests) an attempt only rolls back to its savepoint, and
-        // InnoDB keeps the locks the attempt took until the caller finishes.
+        // The console calls this without a transaction, so each attempt is a transaction of its own and rolling it
+        // back releases its locks. JPA has no savepoints: inside a caller's transaction (the integration tests) the
+        // attempts join it, and an attempt that has to retry marks that transaction for rollback.
         this.memberAttempt = new TransactionTemplate(transactionManager);
-        this.memberAttempt.setPropagationBehavior(TransactionDefinition.PROPAGATION_NESTED);
+        this.memberAttempt.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRED);
     }
 
     public Map<String,Object> health() {

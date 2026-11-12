@@ -19,7 +19,7 @@ const loaded = ref<Target | null>(null)
 const target = computed<Target | null>(() => props.role ? { roleId: props.role.id, departmentId: props.departmentId, applicationId: props.applicationId } : null)
 const same = (a: Target | null, b: Target | null) => !!a && !!b && a.roleId === b.roleId && a.departmentId === b.departmentId && a.applicationId === b.applicationId
 const ready = computed(() => same(loaded.value, target.value) && !loading.value)
-const canWrite = computed(() => hub.canWriteApp(props.applicationId))
+const canWrite = computed(() => hub.can('domain.assign', props.applicationId))
 const dirty = computed(() => {
   const now = members.value.map(m => m.id).sort((a, b) => a - b)
   return now.length !== original.value.length || now.some((id, i) => id !== original.value[i])

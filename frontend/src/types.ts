@@ -1,5 +1,16 @@
-export type AdminRole = 'SUPER_ADMIN' | 'ADMIN' | 'APP_ADMIN' | 'AUDITOR'
-export interface Principal { username: string; displayName: string; role: AdminRole; applicationIds: number[]; mfaEnabled: boolean }
+/** Console functions; a console page or button is available when the signed-in role grants its function. */
+export type AdminFunctionCode = 'org.view' | 'department.manage' | 'user.manage' | 'application.manage' | 'application.credentials'
+  | 'domain.view' | 'domain.configure' | 'domain.assign' | 'domain.transfer' | 'governance.view' | 'request.approve' | 'review.manage'
+  | 'audit.view' | 'system.view' | 'account.manage' | 'role.manage'
+export interface Principal {
+  username: string; displayName: string; role: string; roleName: string; functions: AdminFunctionCode[]
+  /** False when the account may only manage the applications in applicationIds. */
+  allApplications: boolean; applicationIds: number[]; mfaEnabled: boolean
+}
+export interface AdminFunctionDefinition { code: AdminFunctionCode; name: string; category: string }
+export interface AdminRoleDefinition {
+  code: string; name: string; description: string; builtin: boolean; functions: AdminFunctionCode[]; accountCount: number; createdAt: string
+}
 export interface Department { id: number; name: string; code: string; createdAt: string; memberCount: number; roleCount: number }
 export interface Application {
   id: number; name: string; code: string; description: string; owner: string; enabled: boolean; createdAt: string
@@ -30,9 +41,9 @@ export interface Overview {
 }
 export interface Health { status: string; database: string; cache: string; model?: string }
 export interface Account {
-  username: string; displayName: string; role: AdminRole; enabled: boolean; failedAttempts: number; locked: boolean
+  username: string; displayName: string; role: string; enabled: boolean; failedAttempts: number; locked: boolean
   lockedUntil: string | null; lastLoginAt: string | null; passwordChangedAt: string | null; createdAt: string
-  activeSessions: number; applicationIds: number[]; mfaEnabled: boolean
+  activeSessions: number; allApplications: boolean; applicationIds: number[]; mfaEnabled: boolean
 }
 export interface AccessDomain {
   departmentId: number; departmentName: string; applicationId: number; applicationName: string; applicationEnabled: boolean

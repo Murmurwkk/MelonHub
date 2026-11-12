@@ -11,7 +11,7 @@ const hub = useHub()
 const source = ref<number>(), targets = ref<number[]>([]), applications = ref<number[]>([]), saving = ref(false)
 const results = ref<string[]>([]), failure = ref('')
 const departmentOptions = computed(() => hub.departmentOptions.filter(d => d.value !== (props.mode === 'application' ? source.value : props.departmentId)))
-const applicationOptions = computed(() => hub.applicationOptions.filter(a => hub.canWriteApp(a.value)))
+const applicationOptions = computed(() => hub.applicationOptions.filter(a => hub.can('domain.transfer', a.value)))
 const ready = computed(() => !!source.value && (props.mode === 'application' ? targets.value.length : applications.value.length))
 
 watch(open, value => {

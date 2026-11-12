@@ -3,6 +3,11 @@ package com.melonhub.rbac.security;
 import com.melonhub.rbac.exception.ApiException;
 import jakarta.servlet.http.HttpServletRequest;
 
+/**
+ * The signed-in operator of a console request. The function a handler needs is checked by {@link AdminFunctionGuard};
+ * handlers check here that the application they touch is one the operator may manage. Resolving the operator again
+ * in the handler keeps a request that somehow skipped the filter failing closed.
+ */
 public final class AdminAccess {
     public static final String ATTRIBUTE = "melonhub.admin";
     private AdminAccess() {}
@@ -11,24 +16,9 @@ public final class AdminAccess {
         if (!(request.getAttribute(ATTRIBUTE) instanceof AdminPrincipal principal)) throw ApiException.unauthorized();
         return principal;
     }
-    public static AdminPrincipal platformWrite(HttpServletRequest request) {
+    public static AdminPrincipal application(HttpServletRequest request, long application) {
         var principal = of(request);
-        if (!principal.platformWriter()) throw ApiException.forbidden("当前管理员角色无权执行此操作");
-        return principal;
-    }
-    public static AdminPrincipal superAdmin(HttpServletRequest request) {
-        var principal = of(request);
-        if (!principal.superAdmin()) throw ApiException.forbidden("仅超级管理员可以管理平台账号");
-        return principal;
-    }
-    public static AdminPrincipal readApplication(HttpServletRequest request, long application) {
-        var principal = of(request);
-        if (!principal.canRead(application)) throw ApiException.forbidden("当前账号未被授权管理该软件");
-        return principal;
-    }
-    public static AdminPrincipal writeApplication(HttpServletRequest request, long application) {
-        var principal = of(request);
-        if (!principal.canWrite(application)) throw ApiException.forbidden("当前账号未被授权修改该软件的权限配置");
+        if (!principal.canAccessApplication(application)) throw ApiException.forbidden("当前账号未被授权管理该软件");
         return principal;
     }
 }

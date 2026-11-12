@@ -11,7 +11,7 @@ const emit = defineEmits<{ changed: [] }>()
 const hub = useHub()
 const applications = ref<number[]>([]), roles = ref<Record<number, Role[]>>({}), selected = ref<Record<number, number[]>>({})
 const days = ref<number | null>(null), loading = ref(false), saving = ref(false), failure = ref(''), results = ref<string[]>([])
-const options = computed(() => hub.applicationOptions.filter(a => hub.canWriteApp(a.value)))
+const options = computed(() => hub.applicationOptions.filter(a => hub.can('domain.assign', a.value)))
 const ready = computed(() => applications.value.length && applications.value.every(id => selected.value[id]?.length))
 let sequence = 0
 

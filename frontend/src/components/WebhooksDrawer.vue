@@ -13,7 +13,7 @@ const open = defineModel<boolean>('open', { required: true })
 const props = defineProps<{ application?: Application }>()
 const hub = useHub()
 const hooks = useList<Webhook>(() => get<Webhook[]>(`/admin/applications/${props.application!.id}/webhooks`))
-const canWrite = computed(() => !!props.application && hub.canWriteApp(props.application.id))
+const canWrite = computed(() => !!props.application && hub.can('application.credentials', props.application.id))
 watch(() => [open.value, props.application?.id], () => { if (open.value && props.application) hooks.load() }, { immediate: true })
 
 const columns: TableColumnsType<Webhook> = [

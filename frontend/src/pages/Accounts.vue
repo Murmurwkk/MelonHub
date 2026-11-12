@@ -4,15 +4,18 @@ import { Modal, message, type FormInstance, type TableColumnsType } from 'ant-de
 import { DownOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import { errorText, get, send } from '../api'
 import { attempt, newPasswordRules, useList } from '../composables'
-import { fmt, roleColors, roleDescriptions, roleLabels } from '../labels'
+import { fmt, roleColor } from '../labels'
 import { useHub } from '../store'
-import type { Account, AdminRole } from '../types'
+import type { Account, AdminRoleDefinition } from '../types'
 import PageHead from '../components/PageHead.vue'
 
 const hub = useHub()
 const list = useList<Account>(() => get<Account[]>('/admin/accounts'))
-onMounted(() => list.load())
-const roleOptions = (Object.keys(roleLabels) as AdminRole[]).map(value => ({ value, label: roleLabels[value] }))
+const roles = useList<AdminRoleDefinition>(() => get<AdminRoleDefinition[]>('/admin/admin-roles'))
+onMounted(() => { list.load(); roles.load() })
+const roleOptions = computed(() => roles.rows.value.map(r => ({ value: r.code, label: r.name })))
+const roleName = (code: string) => roles.rows.value.find(r => r.code === code)?.name ?? code
+const roleDescription = computed(() => roles.rows.value.find(r => r.code === form.role)?.description)
 
 const columns: TableColumnsType<Account> = [
   { title: '账号', dataIndex: 'username', key: 'username', width: 150, ellipsis: true },
@@ -27,9 +30,9 @@ const columns: TableColumnsType<Account> = [
 ]
 
 const open = ref(false), saving = ref(false), editing = ref<Account | null>(null), formRef = ref<FormInstance>()
-const form = reactive<{ username: string; displayName: string; role: AdminRole; applicationIds: number[]; enabled: boolean; password: string; confirm: string }>({
-  username: '', displayName: '', role: 'ADMIN', applicationIds: [], enabled: true, password: '', confirm: '',
-})
+const form = reactive<{
+  username: string; displayName: string; role: string; allApplications: boolean; applicationIds: number[]; enabled: boolean; password: string; confirm: string
+}>({ username: '', displayName: '', role: 'ADMIN', allApplications: true, applicationIds: [], enabled: true, password: '', confirm: '' })
 const self = computed(() => editing.value?.username === hub.me?.username)
 // Usernames only use characters that are valid in a path segment as they are; percent-encoding "@" would make
 // a non-canonical path, which the server refuses.
@@ -38,24 +41,25 @@ const rules = computed(() => ({
   username: [{ required: true, pattern: /^[a-zA-Z0-9_@-][a-zA-Z0-9_.@-]{2,99}$/, message: '3-100 位字母、数字或 _ . @ -，不能以 . 开头' }],
   displayName: [{ max: 100, message: '最多 100 字' }],
   role: [{ required: true, message: '请选择角色' }],
-  applicationIds: form.role === 'APP_ADMIN' ? [{ required: true, type: 'array', min: 1, message: '软件管理员至少需要一个可管理的软件' }] : [],
+  applicationIds: form.allApplications ? [] : [{ required: true, type: 'array', min: 1, message: '至少选择一个可管理的软件' }],
   password: editing.value ? [] : newPasswordRules(),
   confirm: editing.value ? [] : [{ required: true, validator: (_: unknown, v: string) => v === form.password ? Promise.resolve() : Promise.reject('两次输入的密码不一致') }],
 }))
 function edit(row?: Account) {
   editing.value = row ?? null
   Object.assign(form, {
-    username: row?.username ?? '', displayName: row?.displayName ?? '', role: row?.role ?? 'ADMIN', applicationIds: [...(row?.applicationIds ?? [])],
+    username: row?.username ?? '', displayName: row?.displayName ?? '', role: row?.role ?? 'ADMIN',
+    allApplications: row?.allApplications ?? true, applicationIds: [...(row?.applicationIds ?? [])],
     enabled: row?.enabled ?? true, password: '', confirm: '',
   })
   open.value = true
 }
 async function save() {
   await formRef.value?.validate()
-  const applicationIds = form.role === 'APP_ADMIN' ? form.applicationIds : []
+  const scope = { allApplications: form.allApplications, applicationIds: form.allApplications ? [] : form.applicationIds }
   const ok = await attempt(saving, () => editing.value
-    ? send('PUT', accountPath(editing.value.username), { displayName: form.displayName.trim(), role: form.role, enabled: form.enabled, applicationIds })
-    : send('POST', '/admin/accounts', { username: form.username.trim(), displayName: form.displayName.trim(), role: form.role, enabled: form.enabled, applicationIds, password: form.password }),
+    ? send('PUT', accountPath(editing.value.username), { displayName: form.displayName.trim(), role: form.role, enabled: form.enabled, ...scope })
+    : send('POST', '/admin/accounts', { username: form.username.trim(), displayName: form.displayName.trim(), role: form.role, enabled: form.enabled, ...scope, password: form.password }),
   editing.value ? '管理员已更新' : '管理员已创建')
   if (ok) { open.value = false; list.load() }
 }
@@ -111,13 +115,13 @@ function more(row: Account, key: string) {
       <a-table :columns="columns" :data-source="list.rows.value" row-key="username" size="small" :loading="list.loading.value" :scroll="{ x: 1100 }" :pagination="false">
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'username'"><code>{{ record.username }}</code><a-tag v-if="record.username === hub.me?.username" class="title-tag">当前</a-tag></template>
-          <template v-else-if="column.key === 'role'"><a-tag :color="roleColors[record.role as AdminRole]">{{ roleLabels[record.role as AdminRole] }}</a-tag></template>
+          <template v-else-if="column.key === 'role'"><a-tag :color="roleColor(record.role)">{{ roleName(record.role) }}</a-tag></template>
           <template v-else-if="column.key === 'applications'">
-            <template v-if="record.role === 'APP_ADMIN'">
+            <span v-if="record.allApplications" class="muted">全部</span>
+            <template v-else>
               <a-tag v-for="id in record.applicationIds" :key="id">{{ hub.applicationName(id) }}</a-tag>
               <span v-if="!record.applicationIds.length" class="warn-text">未授权任何软件</span>
             </template>
-            <span v-else class="muted">{{ record.role === 'AUDITOR' ? '全部（只读）' : '全部' }}</span>
           </template>
           <template v-else-if="column.key === 'mfa'">
             <a-badge :status="record.mfaEnabled ? 'success' : 'default'" :text="record.mfaEnabled ? '已启用' : '未启用'" />
@@ -159,10 +163,16 @@ function more(row: Account, key: string) {
           <a-col :xs="24" :sm="12"><a-form-item label="账号" name="username"><a-input v-model:value="form.username" :disabled="!!editing" :maxlength="100" autocomplete="off" /></a-form-item></a-col>
           <a-col :xs="24" :sm="12"><a-form-item label="显示名称" name="displayName"><a-input v-model:value="form.displayName" :maxlength="100" placeholder="默认同账号" /></a-form-item></a-col>
         </a-row>
-        <a-form-item label="角色" name="role" :extra="roleDescriptions[form.role]">
-          <a-select v-model:value="form.role" :options="roleOptions" :disabled="self" />
+        <a-form-item label="角色" name="role" :extra="roleDescription">
+          <a-select v-model:value="form.role" :options="roleOptions" :loading="roles.loading.value" :disabled="self" />
         </a-form-item>
-        <a-form-item v-if="form.role === 'APP_ADMIN'" label="可管理的软件" name="applicationIds">
+        <a-form-item label="可管理的软件" name="allApplications" extra="限定软件时，角色、权限、授权、审批、复核、密钥等按软件的操作只能在所选软件中进行。">
+          <a-radio-group v-model:value="form.allApplications" :disabled="self">
+            <a-radio :value="true">全部软件</a-radio>
+            <a-radio :value="false">指定软件</a-radio>
+          </a-radio-group>
+        </a-form-item>
+        <a-form-item v-if="!form.allApplications" name="applicationIds">
           <a-select v-model:value="form.applicationIds" mode="multiple" :options="hub.applicationOptions" option-filter-prop="label" placeholder="选择软件" />
         </a-form-item>
         <template v-if="!editing">

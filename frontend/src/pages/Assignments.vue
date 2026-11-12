@@ -55,7 +55,7 @@ const columns: TableColumnsType<Member> = [
 const open = ref(false), target = ref<Member | null>(null)
 const grantForm = ref<InstanceType<typeof UserRolesForm>>()
 const selected = ref<number[]>([]), bulkOpen = ref(false)
-const rowSelection = computed(() => scope.canDomain ? {
+const rowSelection = computed(() => scope.canAssign ? {
   selectedRowKeys: selected.value,
   preserveSelectedRowKeys: true,
   onChange: (keys: (string | number)[]) => { selected.value = keys.map(Number) },
@@ -81,7 +81,7 @@ async function save() {
     </PageHead>
     <DomainEmpty v-if="!scope.hasDomain" />
     <template v-else>
-      <ReadonlyHint />
+      <ReadonlyHint :editable="scope.canAssign" />
       <a-tabs v-model:active-key="tab" class="block-gap">
         <a-tab-pane key="members" tab="成员授权" />
         <a-tab-pane key="expiring" tab="即将到期" />
@@ -92,7 +92,7 @@ async function save() {
           <span class="muted">本部门共 {{ table.total.value }} 名成员</span>
           <a @click="navigate('members')">管理本部门成员</a>
         </div>
-        <div v-if="scope.canDomain" class="toolbar">
+        <div v-if="scope.canAssign" class="toolbar">
           <a-button type="primary" :disabled="!selected.length" @click="bulkOpen = true">批量分配软件角色</a-button>
           <span class="muted">已选 {{ selected.length }} 名成员，可跨页勾选</span>
           <a-button v-if="selected.length" type="link" @click="selected = []">清空选择</a-button>
@@ -111,7 +111,7 @@ async function save() {
                 <span v-if="expiryOf(record, id)" :title="`到期：${fmt(expiryOf(record, id))}`"> · 至 {{ dayjs(expiryOf(record, id)).format('MM-DD') }}</span>
               </a-tag>
             </template>
-            <template v-else-if="column.key === 'actions'"><a v-if="scope.canDomain" @click="edit(record)">个别调整</a></template>
+            <template v-else-if="column.key === 'actions'"><a v-if="scope.canAssign" @click="edit(record)">个别调整</a></template>
           </template>
         </a-table>
       </a-card>
@@ -147,7 +147,7 @@ async function save() {
 
     <a-modal v-model:open="open" :title="`个别调整：${target?.name ?? ''}`" :confirm-loading="grantForm?.saving" ok-text="保存" width="640px" destroy-on-close @ok="save">
       <UserRolesForm v-if="target" ref="grantForm" :key="target.id" :user-id="target.id" :department-id="scope.departmentId" :application-id="scope.applicationId"
-                     :roles="roles.rows.value" :assigned="target.roleIds ?? []" :expiries="target.roleExpiries ?? {}" :disabled="!scope.canDomain" />
+                     :roles="roles.rows.value" :assigned="target.roleIds ?? []" :expiries="target.roleExpiries ?? {}" :disabled="!scope.canAssign" />
     </a-modal>
   </div>
 </template>

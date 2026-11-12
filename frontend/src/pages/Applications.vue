@@ -142,13 +142,13 @@ function exportRows() {
     <PageHead title="软件接入" description="选中软件，在配置抽屉中维护部门的角色与权限；配好一处后可复制到多个部门。">
       <a-button @click="exportRows"><ExportOutlined />导出列表</a-button>
       <a-button :loading="loading" @click="reload"><ReloadOutlined />刷新</a-button>
-      <a-button v-if="hub.canPlatform" type="primary" @click="edit()"><PlusOutlined />接入软件</a-button>
+      <a-button v-if="hub.can('application.manage')" type="primary" @click="edit()"><PlusOutlined />接入软件</a-button>
     </PageHead>
     <a-card :bordered="false">
       <div class="toolbar">
         <a-input-search v-model:value="keyword" placeholder="名称、编码、负责人或描述" allow-clear class="toolbar-search" />
         <a-select v-model:value="status" placeholder="全部状态" allow-clear class="toolbar-select-sm" :options="[{ value: 'true', label: '启用' }, { value: 'false', label: '停用' }]" />
-        <span class="muted">共 {{ rows.length }} 个软件<template v-if="hub.role === 'APP_ADMIN'">（仅显示授权给你的软件）</template></span>
+        <span class="muted">共 {{ rows.length }} 个软件<template v-if="!hub.me?.allApplications">（仅显示授权给你的软件）</template></span>
       </div>
       <a-table :columns="columns" :data-source="rows" row-key="id" size="small" :loading="loading" :scroll="{ x: 1140 }"
                :pagination="{ size: 'small', defaultPageSize: 20, showSizeChanger: true, showTotal: (t: number) => `共 ${t} 条` }">
@@ -174,7 +174,7 @@ function exportRows() {
               <a @click="manageKeys(record)">API Key</a>
               <a-divider type="vertical" />
               <a @click="manageHooks(record)">Webhook</a>
-              <template v-if="hub.canPlatform">
+              <template v-if="hub.can('application.manage')">
                 <a-divider type="vertical" />
                 <a-dropdown>
                   <a>更多 <DownOutlined /></a>

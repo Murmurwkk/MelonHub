@@ -14,7 +14,7 @@ import AuthorizationDrawer from '../components/AuthorizationDrawer.vue'
 const hub = useHub(), router = useRouter()
 const overview = ref<Overview | null>(null), recent = ref<AuditEvent[]>([]), governance = ref<SystemStatus | null>(null)
 const loading = ref(false), loaded = ref(false), failure = ref('')
-const isAuditor = computed(() => hub.role === 'AUDITOR')
+const canStatus = computed(() => hub.can('system.view'))
 let sequence = 0
 
 async function load() {
@@ -25,7 +25,7 @@ async function load() {
     const [o, a, s] = await Promise.all([
       hub.hasDomain ? get<Overview>('/admin/overview', hub.domainQuery) : Promise.resolve(null),
       get<PageResult<AuditEvent>>('/admin/audit', { page: 1, size: 8 }),
-      isAuditor.value ? Promise.resolve(null) : get<SystemStatus>('/admin/system/status').catch(() => null),
+      !canStatus.value ? Promise.resolve(null) : get<SystemStatus>('/admin/system/status').catch(() => null),
       hub.refreshHealth(),
     ])
     if (current !== sequence) return
@@ -159,7 +159,7 @@ function openDomain(to: string) {
               <template v-if="column.key === 'name'">{{ record.name }}<span v-if="record.id === hub.applicationId" class="muted current">当前</span></template>
               <template v-else-if="column.key === 'code'"><code>{{ record.code }}</code></template>
               <template v-else-if="column.key === 'enabled'"><a-badge :status="record.enabled ? 'success' : 'default'" :text="record.enabled ? '启用' : '停用'" /></template>
-              <template v-else-if="column.key === 'go'"><a @click="open(record)">{{ hub.canWriteApp(record.id) ? '配置' : '查看' }}</a></template>
+              <template v-else-if="column.key === 'go'"><a @click="open(record)">{{ hub.can('domain.configure', record.id) || hub.can('domain.assign', record.id) ? '配置' : '查看' }}</a></template>
             </template>
           </a-table>
         </section>
@@ -180,7 +180,7 @@ function openDomain(to: string) {
         <section class="ov-sec">
           <div class="ov-head">
             <h3>服务状态</h3>
-            <router-link v-if="!isAuditor" to="/status" class="ov-link">详情</router-link>
+            <router-link v-if="canStatus" to="/status" class="ov-link">详情</router-link>
           </div>
           <ul class="rows">
             <li class="row static"><span><i class="dot" :class="dbUp ? 'ok' : 'bad'" />数据库</span><b>{{ dbUp ? '正常' : '不可用' }}<small v-if="governance">{{ governance.databaseLatencyMs }} ms</small></b></li>

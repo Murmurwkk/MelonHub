@@ -3,9 +3,11 @@ package com.melonhub.rbac.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.melonhub.rbac.cache.PermissionCache;
+import com.melonhub.rbac.dao.AdminRoleDao;
 import com.melonhub.rbac.dao.AuthDao;
 import com.melonhub.rbac.dto.Requests;
 import com.melonhub.rbac.exception.ApiException;
+import com.melonhub.rbac.security.AdminFunction;
 import com.melonhub.rbac.security.AdminPrincipal;
 import com.melonhub.rbac.security.ApplicationCaller;
 import com.melonhub.rbac.security.ClientAddress;
@@ -15,11 +17,14 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
@@ -43,6 +48,7 @@ public class AuthService implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(AuthService.class);
     private final AuthDao dao;
+    private final AdminRoleDao roles;
     private final RbacService rbac;
     private final PermissionCache cache;
     private final ObjectMapper json;
@@ -57,7 +63,7 @@ public class AuthService implements ApplicationRunner {
     private final String dummyHash;
     private final Set<Long> usedKeys = ConcurrentHashMap.newKeySet();
 
-    public AuthService(AuthDao dao, RbacService rbac, PermissionCache cache, ObjectMapper json,
+    public AuthService(AuthDao dao, AdminRoleDao roles, RbacService rbac, PermissionCache cache, ObjectMapper json,
                        @Value("${melonhub.admin-username}") String bootstrapUser,
                        @Value("${melonhub.admin-password}") String bootstrapPassword,
                        @Value("${melonhub.admin-password-reset:false}") boolean bootstrapReset,
@@ -65,7 +71,7 @@ public class AuthService implements ApplicationRunner {
                        @Value("${melonhub.admin-security.lock-minutes:15}") int lockMinutes,
                        @Value("${melonhub.admin-security.session-hours:8}") int sessionHours,
                        @Value("${melonhub.admin-security.idle-minutes:30}") int idleMinutes) {
-        this.dao = dao; this.rbac = rbac; this.cache = cache; this.json = json;
+        this.dao = dao; this.roles = roles; this.rbac = rbac; this.cache = cache; this.json = json;
         this.bootstrapUser = bootstrapUser; this.bootstrapPassword = bootstrapPassword; this.bootstrapReset = bootstrapReset;
         this.maxFailures = maxFailures; this.lockMinutes = lockMinutes; this.sessionSeconds = sessionHours * 3600; this.idleMinutes = idleMinutes;
         // Unknown usernames still pay for one BCrypt comparison so response time does not reveal which accounts exist.
@@ -78,10 +84,10 @@ public class AuthService implements ApplicationRunner {
         if (bytes(bootstrapPassword) > PASSWORD_MAX_BYTES) throw new IllegalStateException("ADMIN_PASSWORD must not exceed 72 bytes in UTF-8");
         if (!bootstrapUser.matches(Requests.USERNAME)) throw new IllegalStateException("ADMIN_USERNAME must be 3-100 letters, digits or _.@-");
         if (!dao.accountExists(bootstrapUser)) {
-            dao.createAccount(bootstrapUser, "平台管理员", AdminPrincipal.SUPER_ADMIN, encode(bootstrapPassword), true);
+            dao.createAccount(bootstrapUser, "平台管理员", AdminPrincipal.SUPER_ADMIN, encode(bootstrapPassword), true, true);
             log.info("Bootstrap super administrator account created");
         } else if (bootstrapReset) {
-            dao.resetBootstrap(bootstrapUser, encode(bootstrapPassword));
+            dao.resetBootstrap(bootstrapUser, encode(bootstrapPassword), AdminPrincipal.SUPER_ADMIN);
             dao.endSessions(bootstrapUser);
             log.warn("Bootstrap administrator restored from ADMIN_PASSWORD; set ADMIN_PASSWORD_RESET=false again");
         }
@@ -136,7 +142,7 @@ public class AuthService implements ApplicationRunner {
         result.put("token", token);
         result.put("expiresIn", sessionSeconds);
         result.put("idleTimeout", idleMinutes * 60);
-        result.putAll(view(principal(account.username(), account.displayName(), account.role())));
+        result.putAll(view(principal(account.username(), account.displayName(), account.role(), account.allApplications())));
         result.put("mfaEnabled", account.mfaSecret() != null);
         return result;
     }
@@ -145,7 +151,7 @@ public class AuthService implements ApplicationRunner {
         String hash = sessionHash(authorization);
         var session = dao.session(hash, idleMinutes).orElseThrow(ApiException::unauthorized);
         if (session.stale()) dao.touchSession(hash);
-        return principal(session.username(), session.displayName(), session.role());
+        return principal(session.username(), session.displayName(), session.role(), session.allApplications());
     }
 
     public String sessionHash(String authorization) {
@@ -262,11 +268,13 @@ public class AuthService implements ApplicationRunner {
     }
 
     @Transactional public void createAccount(Requests.Account input, AdminPrincipal actor) {
-        var applications = applications(input.role(), input.applicationIds());
+        requireRole(input.role());
+        boolean all = allApplications(input.allApplications(), input.applicationIds());
+        var applications = all ? List.<Long>of() : applications(input.applicationIds());
         String displayName = blankTo(input.displayName(), input.username());
-        dao.createAccount(input.username(), displayName, input.role(), encode(input.password()), !Boolean.FALSE.equals(input.enabled()));
+        dao.createAccount(input.username(), displayName, input.role(), encode(input.password()), !Boolean.FALSE.equals(input.enabled()), all);
         dao.replaceAccountApplications(input.username(), applications);
-        rbac.audit(actor.actor(), "ACCOUNT_CREATED", input.username(), null, null, "角色 " + input.role() + applicationDetail(applications));
+        rbac.audit(actor.actor(), "ACCOUNT_CREATED", input.username(), null, null, "角色 " + input.role() + applicationDetail(all, applications));
     }
 
     @Transactional public void updateAccount(String username, Requests.AccountUpdate input, AdminPrincipal actor) {
@@ -276,12 +284,14 @@ public class AuthService implements ApplicationRunner {
         boolean disabling = account.enabled() && !input.enabled();
         if (username.equals(actor.username()) && (roleChanged || disabling)) throw ApiException.bad("不能修改自己的角色或停用自己的账号");
         if (superAdmins.contains(username) && (roleChanged || disabling) && superAdmins.size() <= 1) throw ApiException.conflict("至少需要保留一个启用的超级管理员");
-        var applications = applications(input.role(), input.applicationIds());
-        dao.updateAccount(username, blankTo(input.displayName(), username), input.role(), input.enabled());
+        requireRole(input.role());
+        boolean all = allApplications(input.allApplications(), input.applicationIds());
+        var applications = all ? List.<Long>of() : applications(input.applicationIds());
+        dao.updateAccount(username, blankTo(input.displayName(), username), input.role(), input.enabled(), all);
         dao.replaceAccountApplications(username, applications);
         if (roleChanged || disabling) dao.endSessions(username);
         rbac.audit(actor.actor(), "ACCOUNT_UPDATED", username, null, null,
-                "角色 " + input.role() + (input.enabled() ? "，启用" : "，停用") + applicationDetail(applications));
+                "角色 " + input.role() + (input.enabled() ? "，启用" : "，停用") + applicationDetail(all, applications));
     }
 
     @Transactional public void resetPassword(String username, Requests.PasswordReset input, AdminPrincipal actor) {
@@ -308,24 +318,38 @@ public class AuthService implements ApplicationRunner {
         view.put("username", principal.username());
         view.put("displayName", principal.displayName());
         view.put("role", principal.role());
+        view.put("roleName", principal.roleName());
+        view.put("functions", principal.functions().stream().map(AdminFunction::code).sorted().toList());
+        view.put("allApplications", principal.allApplications());
         view.put("applicationIds", principal.applicationIds().stream().sorted().toList());
         return view;
     }
 
-    private AdminPrincipal principal(String username, String displayName, String role) {
-        Set<Long> applications = AdminPrincipal.APP_ADMIN.equals(role) ? Set.copyOf(dao.accountApplications(username)) : Set.of();
-        return new AdminPrincipal(username, blankTo(displayName, username), role, applications);
+    /** The operator with the functions its role grants now; a role change takes effect on the next request. */
+    private AdminPrincipal principal(String username, String displayName, String role, boolean allApplications) {
+        var granted = roles.role(role).orElseThrow(ApiException::unauthorized);
+        var functions = EnumSet.noneOf(AdminFunction.class);
+        granted.functions().stream().map(AdminFunction::of).filter(Objects::nonNull).forEach(functions::add);
+        Set<Long> applications = allApplications ? Set.of() : Set.copyOf(dao.accountApplications(username));
+        return new AdminPrincipal(username, blankTo(displayName, username), role, granted.name(), Collections.unmodifiableSet(functions),
+                allApplications, applications);
     }
 
-    private List<Long> applications(String role, List<Long> requested) {
-        if (!AdminPrincipal.APP_ADMIN.equals(role) || requested == null) return List.of();
+    private void requireRole(String role) {
+        if (!roles.exists(role)) throw ApiException.bad("管理员角色不存在");
+    }
+    private static boolean allApplications(Boolean requested, List<Long> applicationIds) {
+        return requested != null ? requested : applicationIds == null;
+    }
+    private List<Long> applications(List<Long> requested) {
+        if (requested == null) return List.of();
         var ids = new ArrayList<>(new LinkedHashSet<>(requested));
         if (dao.existingApplications(ids) != ids.size()) throw ApiException.missing("授权的软件不存在");
         return ids;
     }
 
-    private static String applicationDetail(List<Long> applications) {
-        return applications.isEmpty() ? "" : "，授权软件 " + applications.size() + " 个";
+    private static String applicationDetail(boolean all, List<Long> applications) {
+        return all ? "" : "，授权软件 " + applications.size() + " 个";
     }
 
     private ApplicationCaller used(long application, long key) {

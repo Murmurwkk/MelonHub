@@ -68,7 +68,7 @@ function revoke() {
     <template #extra>
       <a-space>
         <a-button @click="load">刷新</a-button>
-        <a-button v-if="hub.canPlatform" danger :disabled="!data" @click="revoke">强制下线</a-button>
+        <a-button v-if="hub.can('user.manage')" danger :disabled="!data" @click="revoke">强制下线</a-button>
       </a-space>
     </template>
     <a-spin :spinning="loading">

@@ -206,11 +206,11 @@ class GovernanceIntegrationTest {
     }
 
     @Test void mfaRequiresCurrentCodeAndNeverReplaysOne() {
-        var root = new AdminPrincipal(ACTOR, "tester", AdminPrincipal.SUPER_ADMIN, java.util.Set.of());
+        var root = TestAdmins.superAdmin(ACTOR);
         String username = "mfa-" + Credentials.token().substring(0, 8);
         String password = "mfa-password-123";
         auth.createAccount(new Requests.Account(username, "MFA 用户", "AUDITOR", password, true, null), root);
-        var principal = new AdminPrincipal(username, "MFA 用户", "AUDITOR", java.util.Set.of());
+        var principal = TestAdmins.self(username, "MFA 用户", "AUDITOR");
         String beforeEnable = (String) auth.login(new Requests.Login(username, password)).get("token");
         var setup = auth.setupMfa(principal);
         String secret = (String) setup.get("secret");

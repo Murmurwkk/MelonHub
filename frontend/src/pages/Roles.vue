@@ -205,16 +205,16 @@ async function copy() {
           <a-menu @click="(e: { key: string }) => headAction(e.key)">
             <a-menu-item key="export"><ExportOutlined /> 导出本部门清单</a-menu-item>
             <a-menu-item key="export-all"><ExportOutlined /> 导出全部部门清单</a-menu-item>
-            <a-menu-item v-if="scope.canDomain" key="import"><ImportOutlined /> 导入清单</a-menu-item>
-            <a-menu-item v-if="scope.canDomain" key="copy" :disabled="copySources.length === 0"><CopyOutlined /> 从其他部门复制</a-menu-item>
+            <a-menu-item v-if="scope.canTransfer" key="import"><ImportOutlined /> 导入清单</a-menu-item>
+            <a-menu-item v-if="scope.canTransfer" key="copy" :disabled="copySources.length === 0"><CopyOutlined /> 从其他部门复制</a-menu-item>
           </a-menu>
         </template>
       </a-dropdown>
-      <a-button v-if="scope.canDomain" type="primary" @click="edit()"><PlusOutlined />新建角色</a-button>
+      <a-button v-if="scope.canConfigure" type="primary" @click="edit()"><PlusOutlined />新建角色</a-button>
     </PageHead>
     <DomainEmpty v-if="!scope.hasDomain" />
     <template v-else>
-      <ReadonlyHint />
+      <ReadonlyHint :editable="scope.canConfigure" />
       <a-card :bordered="false">
         <div class="toolbar">
           <a-input-search v-model:value="keyword" placeholder="搜索名称或编码" allow-clear class="toolbar-search" />
@@ -226,7 +226,7 @@ async function copy() {
             <a-empty :image-style="{ height: '60px' }"
                      :description="keyword || status ? '没有匹配的角色' : '还没有角色。新建后可直接添加权限，再分配给部门成员。'">
               <a-space v-if="!keyword && !status">
-                <a-button v-if="scope.canDomain" type="primary" @click="edit()">新建角色</a-button>
+                <a-button v-if="scope.canConfigure" type="primary" @click="edit()">新建角色</a-button>
               </a-space>
             </a-empty>
           </template>
@@ -241,10 +241,10 @@ async function copy() {
             <template v-else-if="column.key === 'createdAt'">{{ fmt(record.createdAt) }}</template>
             <template v-else-if="column.key === 'actions'">
               <a-space :size="4">
-                <a @click="grant(record)">{{ scope.canDomain ? '配置权限' : '查看权限' }}</a>
+                <a @click="grant(record)">{{ scope.canConfigure ? '配置权限' : '查看权限' }}</a>
                 <a-divider type="vertical" />
                 <a @click="showMembers(record)">成员</a>
-                <template v-if="scope.canDomain">
+                <template v-if="scope.canConfigure">
                   <a-divider type="vertical" />
                   <a-dropdown>
                     <a>更多 <DownOutlined /></a>
@@ -274,22 +274,22 @@ async function copy() {
     </a-modal>
 
     <a-modal v-model:open="grantOpen" :title="`角色权限：${grantRole?.name ?? ''}`" width="820px" :confirm-loading="granting" ok-text="保存" destroy-on-close
-             :ok-button-props="{ disabled: !scope.canDomain }">
+             :ok-button-props="{ disabled: !scope.canConfigure }">
       <template #footer>
         <a-button @click="grantOpen = false">关闭</a-button>
-        <template v-if="scope.canDomain">
+        <template v-if="scope.canConfigure">
           <a-button :loading="granting" @click="saveGrant()">保存</a-button>
           <a-button type="primary" :loading="granting" @click="saveGrant(true)">保存并分配成员</a-button>
         </template>
       </template>
       <p class="muted">保存后立即生效：拥有该角色的用户在下一次权限校验时按新的权限集合判定。</p>
       <a-space class="block-gap">
-        <a-button v-if="scope.canDomain" size="small" @click="permissionOpen = true">新建权限并勾选</a-button>
-        <a-button size="small" :disabled="!scope.canDomain" @click="grantKeys = transferData.map(p => p.key)">全选权限</a-button>
-        <a-button size="small" :disabled="!scope.canDomain" @click="grantKeys = []">清空权限</a-button>
+        <a-button v-if="scope.canConfigure" size="small" @click="permissionOpen = true">新建权限并勾选</a-button>
+        <a-button size="small" :disabled="!scope.canConfigure" @click="grantKeys = transferData.map(p => p.key)">全选权限</a-button>
+        <a-button size="small" :disabled="!scope.canConfigure" @click="grantKeys = []">清空权限</a-button>
       </a-space>
       <a-transfer v-model:target-keys="grantKeys" :data-source="transferData" :titles="['可选权限', '已授予']" show-search :filter-option="filterPermission"
-                  :disabled="!scope.canDomain" :list-style="{ width: '360px', height: '400px' }" :locale="{ searchPlaceholder: '搜索编码或名称', itemUnit: '项', itemsUnit: '项', notFoundContent: '暂无权限' }">
+                  :disabled="!scope.canConfigure" :list-style="{ width: '360px', height: '400px' }" :locale="{ searchPlaceholder: '搜索编码或名称', itemUnit: '项', itemsUnit: '项', notFoundContent: '暂无权限' }">
         <template #render="item"><code>{{ item.title }}</code> <span class="muted">{{ item.description }}</span></template>
       </a-transfer>
     </a-modal>

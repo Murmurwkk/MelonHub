@@ -23,6 +23,19 @@ spring:
     timeout-per-shutdown-phase: 20s
   flyway:
     enabled: true
+  jpa:
+    # Flyway owns the schema; Hibernate only checks that the mapped entities match it.
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        # Bind Instant as a plain JDBC timestamp so Connector/J converts it with the server time zone, exactly as the
+        # former JdbcTemplate code did. Hibernate's default (UTC calendar) would shift values on a non-UTC server.
+        type.preferred_instant_jdbc_type: TIMESTAMP
+        jdbc.batch_size: 100
+        order_inserts: true
+        order_updates: true
   jackson:
     time-zone: Asia/Shanghai
   datasource:

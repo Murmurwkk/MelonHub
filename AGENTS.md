@@ -28,7 +28,7 @@
 
 | 项目 | 当前情况 |
 | --- | --- |
-| 后端 | Spring Boot 3.5.7、Spring JDBC、Spring Data Redis（Lettuce）、Bean Validation、Flyway、MySQL Connector/J、Actuator + Micrometer Prometheus、spring-security-crypto |
+| 后端 | Spring Boot 3.5.7、Spring Data JPA（Hibernate；迁移进行中：`AuthDao`、`AdminRoleDao` 已用 JPA，其余 DAO 仍为 JdbcTemplate）、Spring Data Redis（Lettuce）、Bean Validation、Flyway、MySQL Connector/J、Actuator + Micrometer Prometheus、spring-security-crypto |
 | Java | 源码目标 Java 17；当前使用 `C:\Program Files\Java\jdk-17` |
 | 前端 | Vue 3.5.22、TypeScript 5.9.3、Pinia 3.0.3、Vue Router 4.5.1（hash 路由）、Vite 6.4.1、ant-design-vue 4.2.6、@ant-design/icons-vue 7、dayjs |
 | Java SDK | `sdk/java`，`com.melonhub:melonhub-client:1.0.0`，独立 Maven 工程（不在根 `pom.xml` 聚合中），基于 JDK HttpClient，Spring Boot 自动装配可选；未发布到远程仓库，需 `mvn -f sdk/java/pom.xml install` |
@@ -42,14 +42,14 @@
 | --- | --- |
 | controller | `AuthController` 健康/登录/改密/两步验证/me，`AdminController` 控制台基础配置，`GovernanceController`（`/api/admin`）审批、复核、Webhook、清单、用户导入、权限反查、即将到期、软件限额、搜索、系统状态、审计链校验，`AccountController` 管理员账号（含 MFA 重置、解锁），`BusinessController` 业务 API（含角色申请与只读授权查询） |
 | service | `RbacService` 配置与规则，`ContextService` 上下文与校验，`AuthService` 管理员、TOTP 与 API Key 认证，`GovernanceService` 审批/复核/导入/清单/反查，`WebhookService` 事件外盒与投递，`AuditSealService` 审计哈希链封存与校验，`ConsoleService` 搜索与状态看板，`MaintenanceService` 定时清理与分配到期 |
-| dao | `RbacDao`、`ContextDao`、`AuthDao`、`GovernanceDao`、`WebhookDao`、`AuditDao`：JdbcTemplate、SQL、数据库锁 |
+| dao | `RbacDao`、`ContextDao`、`GovernanceDao`、`WebhookDao`、`AuditDao`：JdbcTemplate、SQL、数据库锁；`AuthDao`、`AdminRoleDao`：JPA（`entity` 实体、`repository` Spring Data 仓库），不写原生 SQL。DAO 方法签名与返回结构保持不变，写操作在方法返回前 flush；做决定的读取用 JPQL 标量投影（不受持久化上下文中旧实体影响），加锁用 `@Lock`/`refresh(…, LockModeType)`，时间取应用服务器时钟 |
 | cache | `PermissionCache`：Redis 缓存、代标记失效协议、熔断与纪元恢复 |
 | dto | `Requests`：输入类型与校验 |
 | security | `ApiGuard` 统一鉴权/限流/请求编号/安全头，`GlobalRateLimiter` Redis 固定窗口跨实例限流（失败回退 `RateLimiter`），`ApplicationRateLimits` 软件限额（实例缓存 30 秒），`Totp`，`AdminAccess`/`AdminPrincipal` 管理员权限，`ApplicationCaller`，`RateLimiter`，`ClientAddress`，`Credentials` |
 | exception | `ApiException`、`ApiErrors`：结构化错误（含 requestId） |
 | config | `CloudDatabaseConfiguration`（保留历史类名）、`RedisConfiguration`、`DemoData` |
 
-迁移：`V1__rbac.sql`、`V2__enterprise.sql`、`V3__governance.sql`（`user_roles` 到期/授予人、`applications.rate_limit`、`access_requests`、`access_reviews`、`access_review_items`、`webhooks`、`webhook_deliveries`、`admin_accounts` MFA 字段、`audit_events.prev_hash/chain_hash`、`audit_seal`）、`V4__audit_seal_order.sql`（`audit_events.seal_seq`，`audit_seal` 的 `last_seq`、`anchor_seq/anchor_hash`）、`V5__governance_history.sql`（`admin_accounts/admin_sessions.credential_version`、`user_roles.grant_id`、申请与复核条目的名称快照且外键改为 `ON DELETE SET NULL`、`access_requests.pending_role_id` 唯一索引、复核条目 `grant_id/skipped`、`audit_seal.v2_from_seq`）。已应用的迁移不得修改，结构变更新建 V6。
+迁移：`V1__rbac.sql`、`V2__enterprise.sql`、`V3__governance.sql`（`user_roles` 到期/授予人、`applications.rate_limit`、`access_requests`、`access_reviews`、`access_review_items`、`webhooks`、`webhook_deliveries`、`admin_accounts` MFA 字段、`audit_events.prev_hash/chain_hash`、`audit_seal`）、`V4__audit_seal_order.sql`（`audit_events.seal_seq`，`audit_seal` 的 `last_seq`、`anchor_seq/anchor_hash`）、`V6__admin_functions.sql`（`admin_functions` 功能清单、`admin_roles`、`admin_role_functions`、`admin_accounts.all_applications` 与角色外键），`V5__governance_history.sql`（`admin_accounts/admin_sessions.credential_version`、`user_roles.grant_id`、申请与复核条目的名称快照且外键改为 `ON DELETE SET NULL`、`access_requests.pending_role_id` 唯一索引、复核条目 `grant_id/skipped`、`audit_seal.v2_from_seq`）。已应用的迁移不得修改，结构变更新建 V6。
 
 Controller、Service 不直接使用 JdbcTemplate，不把 SQL 搬回服务层。不新增无意义抽象。
 
@@ -69,7 +69,7 @@ RBAC0，隔离域 `(department_id, application_id)`。用户与角色、角色�
 - 校验（`effective`/`check`）**不加锁**：先查 Redis；未命中则在只读事务中读一致性快照（`ContextDao.state`）。语义：变更提交后开始的校验一定看到新状态，与提交并发的校验可能返回旧结果。
 - 失效：修改外部标识、移出当前部门、停用/删除用户、强制下线 → 上下文失效；用户在某域角色重分配、角色成员调整、批准申请、复核关闭回收 → 该域上下文失效；软件停用/删除 → 清除上下文；删除部门 → 清除前成员遗留上下文；角色停用、权限调整、清单导入 → 下一次校验生效；分配到期 → 不失效上下文，到期角色从到期时刻起不再计入（缓存结果带 `refreshAt`，见下）。
 - 删除部门/软件有依赖时返回 409 并在 message 中列出剩余数量（`RbacService.remaining`）；审计对象为名称，详情“编码 xxx”。
-- 写路径行锁顺序统一为“用户 → 角色 → 角色分配”。`RbacService.roleMembers` 先按 ID 顺序锁全部相关用户，再锁角色与分配；加锁读取若发现等锁期间新加入的成员，不在持有角色锁时再去锁该用户，而是回滚本次尝试，下一次把这些用户放在最前面，最多 3 次，仍冲突返回 503 `SERVICE_BUSY`。每次尝试用 `PROPAGATION_NESTED`：从控制器调用时没有外层事务，每次尝试是独立事务，回滚即释放全部锁；在调用方事务内（集成测试）只回滚到保存点，InnoDB 锁保留到外层事务结束。新建 API Key 先锁软件行（`lockApplication`），保证并发下最多 10 个有效密钥。新增写路径要遵守同一顺序。
+- 写路径行锁顺序统一为“用户 → 角色 → 角色分配”。`RbacService.roleMembers` 先按 ID 顺序锁全部相关用户，再锁角色与分配；加锁读取若发现等锁期间新加入的成员，不在持有角色锁时再去锁该用户，而是回滚本次尝试，下一次把这些用户放在最前面，最多 3 次，仍冲突返回 503 `SERVICE_BUSY`。每次尝试用 `PROPAGATION_REQUIRED`（JPA 不支持保存点）：从控制器调用时没有外层事务，每次尝试是独立事务，回滚即释放全部锁；在调用方事务内（集成测试）各次尝试加入外层事务，需要重试时外层事务会被标记回滚。新建 API Key 先锁软件行（`lockApplication`），保证并发下最多 10 个有效密钥。新增写路径要遵守同一顺序。
 
 ### Redis 缓存协议（改动前必须理解）
 
@@ -84,7 +84,7 @@ MySQL 是唯一数据源，Redis 无持久化。缓存键带随机“代标记�
 
 ### 管理员与凭据
 
-管理员角色 SUPER_ADMIN / ADMIN / APP_ADMIN（仅授权软件，`admin_account_applications`）/ AUDITOR。每个控制台处理函数都通过 `AdminAccess.of/platformWrite/readApplication/writeApplication/superAdmin` 自行校验：审批、复核、Webhook、清单导入用 `writeApplication`；用户批量导入、软件限额用 `platformWrite`；搜索、系统状态、审计链校验对任意管理员开放（结果按可见软件过滤）。`.env` 的 ADMIN_* 只在账号不存在时创建初始超级管理员；`ADMIN_PASSWORD_RESET=true` 重启一次可恢复，之后改回 false。5 次失败（密码或动态口令）锁 15 分钟，会话 8 小时、空闲 30 分钟；保留至少一个启用的超级管理员。
+控制台权限按功能配置：16 项功能（`AdminFunction` 枚举，与 `admin_functions` 表一致），每个 `/api/admin` 处理函数用 `@RequiresFunction` 声明所属功能，由 `AdminFunctionGuard` 拦截校验，未声明的接口一律拒绝；管理员角色（`admin_roles`）是一组功能，内置 SUPER_ADMIN / ADMIN / APP_ADMIN / AUDITOR 不可修改且保持原有权限（`AdminFunctionTest` 按旧规则逐接口核对），可在控制台新建自定义角色（只能授予自己拥有的功能）。软件范围属于账号（`all_applications` + `admin_account_applications`），处理函数用 `AdminAccess.application` 校验；列表按可见软件过滤。角色的功能每次请求重新读取，修改即生效。`.env` 的 ADMIN_* 只在账号不存在时创建初始超级管理员；`ADMIN_PASSWORD_RESET=true` 重启一次可恢复，之后改回 false。5 次失败（密码或动态口令）锁 15 分钟，会话 8 小时、空闲 30 分钟；保留至少一个启用的超级管理员。
 
 两步验证：`Totp` RFC 6238（SHA1、30 秒、6 位，容忍 ±1 步）；setup 生成待绑定密钥，confirm 后生效；登录记录 `mfa_last_step`，同一步不能复用（停用两步验证同样检查）；错误码 `MFA_REQUIRED`/`MFA_INVALID`；停用需密码 + 口令；超级管理员 `POST /api/admin/accounts/{username}/mfa/reset`。
 

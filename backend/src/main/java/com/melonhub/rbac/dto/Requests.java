@@ -10,18 +10,35 @@ public final class Requests {
     private static final String CODE = "[a-zA-Z0-9_.-]{1,64}";
     private static final String DOMAIN_CODE = "[a-zA-Z0-9_.:-]{1,100}";
     public static final String USERNAME = "[a-zA-Z0-9_@-][a-zA-Z0-9_.@-]{2,99}";
+    public static final String ADMIN_ROLE_CODE = "[A-Z][A-Z0-9_]{1,31}";
 
     public record Login(@NotBlank @Size(max=100) String username, @NotBlank @Size(max=100) String password, @Size(max=12) String mfaCode) {
         public Login(String username, String password) { this(username, password, null); }
     }
     public record PasswordChange(@NotBlank @Size(max=100) String currentPassword, @NotBlank @Size(min=12,max=100) String newPassword) {}
     public record PasswordReset(@NotBlank @Size(min=12,max=100) String password) {}
+    /**
+     * allApplications false limits the account to applicationIds; when it is omitted, giving applicationIds limits the
+     * account to them and leaving them out allows every application.
+     */
     public record Account(@NotBlank @Pattern(regexp=USERNAME) String username, @Size(max=100) String displayName,
-                          @NotBlank @Pattern(regexp="SUPER_ADMIN|ADMIN|APP_ADMIN|AUDITOR") String role,
+                          @NotBlank @Pattern(regexp=ADMIN_ROLE_CODE) String role,
                           @NotBlank @Size(min=12,max=100) String password, Boolean enabled,
-                          @Size(max=200) List<@NotNull @Positive Long> applicationIds) {}
-    public record AccountUpdate(@Size(max=100) String displayName, @NotBlank @Pattern(regexp="SUPER_ADMIN|ADMIN|APP_ADMIN|AUDITOR") String role,
-                                @NotNull Boolean enabled, @Size(max=200) List<@NotNull @Positive Long> applicationIds) {}
+                          @Size(max=200) List<@NotNull @Positive Long> applicationIds, Boolean allApplications) {
+        public Account(String username, String displayName, String role, String password, Boolean enabled, List<Long> applicationIds) {
+            this(username, displayName, role, password, enabled, applicationIds, null);
+        }
+    }
+    public record AccountUpdate(@Size(max=100) String displayName, @NotBlank @Pattern(regexp=ADMIN_ROLE_CODE) String role,
+                                @NotNull Boolean enabled, @Size(max=200) List<@NotNull @Positive Long> applicationIds, Boolean allApplications) {
+        public AccountUpdate(String displayName, String role, Boolean enabled, List<Long> applicationIds) {
+            this(displayName, role, enabled, applicationIds, null);
+        }
+    }
+    public record AdminRoleCreate(@NotBlank @Pattern(regexp=ADMIN_ROLE_CODE) String code, @NotBlank @Size(max=100) String name,
+                                  @Size(max=500) String description, @NotNull @Size(max=50) List<@NotBlank @Size(max=64) String> functions) {}
+    public record AdminRoleUpdate(@NotBlank @Size(max=100) String name, @Size(max=500) String description,
+                                  @NotNull @Size(max=50) List<@NotBlank @Size(max=64) String> functions) {}
 
     public record Department(@NotBlank @Size(max=100) String name, @NotBlank @Pattern(regexp=CODE) String code) {}
     public record Application(@NotBlank @Size(max=100) String name, @NotBlank @Pattern(regexp=CODE) String code,

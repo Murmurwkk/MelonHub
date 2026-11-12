@@ -14,7 +14,7 @@ const props = defineProps<{ application?: Application }>()
 const emit = defineEmits<{ (e: 'changed'): void }>()
 const hub = useHub()
 const keys = useList<ApiKey>(() => get<ApiKey[]>(`/admin/applications/${props.application!.id}/keys`))
-const canWrite = computed(() => !!props.application && hub.canWriteApp(props.application.id))
+const canWrite = computed(() => !!props.application && hub.can('application.credentials', props.application.id))
 const activeCount = computed(() => keys.rows.value.filter(k => k.status === 'ACTIVE').length)
 watch(() => [open.value, props.application?.id], () => { if (open.value && props.application) keys.load() }, { immediate: true })
 

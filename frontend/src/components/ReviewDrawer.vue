@@ -14,7 +14,7 @@ const hub = useHub()
 // The row passed in is a snapshot from the list; the drawer keeps its own copy current after every change.
 const summary = ref<AccessReview>()
 watch(() => props.review, value => { summary.value = value }, { immediate: true })
-const canWrite = computed(() => !!summary.value && summary.value.status === 'OPEN' && hub.canWriteApp(summary.value.applicationId))
+const canWrite = computed(() => !!summary.value && summary.value.status === 'OPEN' && hub.can('review.manage', summary.value.applicationId))
 async function refreshSummary() {
   const id = props.review?.id
   if (!id) return summary.value

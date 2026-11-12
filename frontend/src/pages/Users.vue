@@ -111,8 +111,8 @@ function more(row: User, key: string) {
 const accessOpen = ref(false), accessUser = ref<number>()
 function access(row: User) { accessUser.value = row.id; accessOpen.value = true }
 
-// Granting roles needs write access to the software; the drawer checks it again per selected software.
-const canGrant = computed(() => hub.canPlatform || hub.role === 'APP_ADMIN')
+// Granting roles needs the assignment function for some software; the drawer checks it again per selected software.
+const canGrant = computed(() => hub.applications.some(a => hub.can('domain.assign', a.id)))
 const grantOpen = ref(false), grantUser = ref<User>()
 function grantRoles(row: User) { grantUser.value = row; grantOpen.value = true }
 
@@ -155,7 +155,7 @@ async function runImport() {
       <a-button v-else-if="canGrant" :disabled="!filters.departmentId" @click="configurationOpen = true">为所选部门批量授权</a-button>
       <a-button :loading="exporting" @click="exportUsers"><ExportOutlined />导出列表</a-button>
       <a-button :loading="table.loading.value" @click="table.load()"><ReloadOutlined />刷新</a-button>
-      <template v-if="hub.canPlatform">
+      <template v-if="hub.can('user.manage')">
         <a-button v-if="embedded" @click="chooseExisting">添加已有用户</a-button>
         <a-button @click="openImport"><ImportOutlined />批量导入</a-button>
         <a-button type="primary" @click="edit()"><PlusOutlined />新建用户</a-button>
@@ -183,7 +183,7 @@ async function runImport() {
               <a v-if="canGrant" @click="grantRoles(record)">分配角色</a>
               <a-divider v-if="canGrant" type="vertical" />
               <a @click="access(record)">授权详情</a>
-              <template v-if="hub.canPlatform">
+              <template v-if="hub.can('user.manage')">
                 <a-divider type="vertical" />
                 <a @click="edit(record)">编辑</a>
                 <a-divider type="vertical" />

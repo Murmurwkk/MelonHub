@@ -1,20 +1,15 @@
 import dayjs from 'dayjs'
-import type { AdminRole } from './types'
 
-export const roleLabels: Record<AdminRole, string> = { SUPER_ADMIN: '超级管理员', ADMIN: '平台管理员', APP_ADMIN: '软件管理员', AUDITOR: '审计员' }
-export const roleColors: Record<AdminRole, string> = { SUPER_ADMIN: 'red', ADMIN: 'blue', APP_ADMIN: 'cyan', AUDITOR: 'default' }
-export const roleDescriptions: Record<AdminRole, string> = {
-  SUPER_ADMIN: '全部操作，包括管理员账号管理',
-  ADMIN: '管理部门、用户、软件以及全部软件的授权配置',
-  APP_ADMIN: '只能查看和管理被授权软件的角色、权限、用户授权与密钥',
-  AUDITOR: '只读查看全部配置与审计日志',
-}
+/** Tag colours of the built-in administrator roles; roles defined in the console use the default colour. */
+const builtinRoleColors: Record<string, string> = { SUPER_ADMIN: 'red', ADMIN: 'blue', APP_ADMIN: 'cyan', AUDITOR: 'default' }
+export const roleColor = (code: string) => builtinRoleColors[code] ?? 'purple'
 
 const actionGroups: [string, Record<string, string>][] = [
   ['登录与账号', {
     LOGIN: '登录', LOGOUT: '退出登录', LOGIN_FAILED: '登录失败', LOGIN_BLOCKED: '锁定期内尝试登录', ACCOUNT_LOCKED: '账号被锁定',
     PASSWORD_CHANGED: '修改本人密码', ACCOUNT_CREATED: '新建管理员', ACCOUNT_UPDATED: '修改管理员', ACCOUNT_DELETED: '删除管理员',
     ACCOUNT_PASSWORD_RESET: '重置管理员密码', ACCOUNT_UNLOCKED: '解锁管理员',
+    ADMIN_ROLE_CREATED: '新建管理员角色', ADMIN_ROLE_UPDATED: '修改管理员角色', ADMIN_ROLE_DELETED: '删除管理员角色',
     MFA_ENABLED: '启用两步验证', MFA_DISABLED: '停用两步验证', MFA_RESET: '重置两步验证',
   }],
   ['组织与用户', {

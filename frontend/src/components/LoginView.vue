@@ -19,7 +19,10 @@ async function submit() {
     const result = await send<Principal & { token: string }>('POST', '/auth/login', body)
     session.save(result.token)
     form.password = ''
-    emit('signed-in', { username: result.username, displayName: result.displayName, role: result.role, applicationIds: result.applicationIds, mfaEnabled: result.mfaEnabled })
+    emit('signed-in', {
+      username: result.username, displayName: result.displayName, role: result.role, roleName: result.roleName, functions: result.functions,
+      allApplications: result.allApplications, applicationIds: result.applicationIds, mfaEnabled: result.mfaEnabled,
+    })
   } catch (e) {
     if (e instanceof ApiError && e.code === 'MFA_REQUIRED') {
       mfaRequired.value = true

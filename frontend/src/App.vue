@@ -5,14 +5,14 @@ import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import {
   ApartmentOutlined, ApiOutlined, AppstoreOutlined, AuditOutlined, DashboardOutlined, DownOutlined, ExperimentOutlined,
   LockOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MonitorOutlined, ReconciliationOutlined,
-  SafetyOutlined, ScheduleOutlined, TeamOutlined, UserOutlined,
+  SafetyCertificateOutlined, SafetyOutlined, ScheduleOutlined, TeamOutlined, UserOutlined,
 } from '@ant-design/icons-vue'
 import { get, send, session } from './api'
 import { useHub } from './store'
 import { antTheme } from './theme'
-import { cacheStatus, roleLabels } from './labels'
+import { cacheStatus } from './labels'
 import { isPhone, labelTables } from './responsive'
-import type { Principal } from './types'
+import type { AdminFunctionCode, Principal } from './types'
 import LoginView from './components/LoginView.vue'
 import DomainPicker from './components/DomainPicker.vue'
 import PasswordModal from './components/PasswordModal.vue'
@@ -28,26 +28,34 @@ let healthTimer: ReturnType<typeof setInterval> | undefined
 const compactEmpty = new Set(['Select', 'TreeSelect', 'Cascader', 'Transfer', 'AutoComplete', 'Mentions'])
 const renderEmpty = (name?: string) => h(EmptyState, { compact: !!name && compactEmpty.has(name) })
 const icon = (component: Component) => () => h(component)
+type MenuEntry = { key: string; icon: () => unknown; label: string; functions?: AdminFunctionCode[] }
+/** Entries whose page the signed-in role can open; groups left without entries are dropped. */
 const menu = computed(() => {
-  const items: Record<string, unknown>[] = [
-    { key: '/', icon: icon(DashboardOutlined), label: '概览' },
-    { type: 'group', key: 'org', label: '组织与软件', children: [
-      { key: '/departments', icon: icon(ApartmentOutlined), label: '部门' },
-      { key: '/users', icon: icon(TeamOutlined), label: '用户' },
-      { key: '/applications', icon: icon(AppstoreOutlined), label: '软件接入' },
+  const groups: { key: string; label: string; children: MenuEntry[] }[] = [
+    { key: 'org', label: '组织与软件', children: [
+      { key: '/departments', icon: icon(ApartmentOutlined), label: '部门', functions: ['org.view'] },
+      { key: '/users', icon: icon(TeamOutlined), label: '用户', functions: ['org.view'] },
+      { key: '/applications', icon: icon(AppstoreOutlined), label: '软件接入', functions: ['org.view'] },
     ] },
-    { type: 'group', key: 'grant', label: '授权治理', children: [
-      { key: '/approvals', icon: icon(ScheduleOutlined), label: '审批中心' },
-      { key: '/reviews', icon: icon(ReconciliationOutlined), label: '权限复核' },
-      { key: '/simulate', icon: icon(ExperimentOutlined), label: '权限诊断' },
+    { key: 'grant', label: '授权治理', children: [
+      { key: '/approvals', icon: icon(ScheduleOutlined), label: '审批中心', functions: ['governance.view'] },
+      { key: '/reviews', icon: icon(ReconciliationOutlined), label: '权限复核', functions: ['governance.view'] },
+      { key: '/simulate', icon: icon(ExperimentOutlined), label: '权限诊断', functions: ['domain.view'] },
     ] },
-    { type: 'group', key: 'security', label: '安全与审计', children: [
-      { key: '/audit', icon: icon(AuditOutlined), label: '审计日志' },
-      { key: '/status', icon: icon(MonitorOutlined), label: '系统状态' },
-      ...(hub.isSuper ? [{ key: '/accounts', icon: icon(UserOutlined), label: '管理员账号' }] : []),
+    { key: 'security', label: '安全与审计', children: [
+      { key: '/audit', icon: icon(AuditOutlined), label: '审计日志', functions: ['audit.view'] },
+      { key: '/status', icon: icon(MonitorOutlined), label: '系统状态', functions: ['system.view'] },
+      { key: '/accounts', icon: icon(UserOutlined), label: '管理员账号', functions: ['account.manage'] },
+      { key: '/admin-roles', icon: icon(SafetyCertificateOutlined), label: '管理员角色', functions: ['role.manage', 'account.manage'] },
     ] },
-    { type: 'group', key: 'dev', label: '开发接入', children: [{ key: '/integration', icon: icon(ApiOutlined), label: '接入指南' }] },
+    { key: 'dev', label: '开发接入', children: [{ key: '/integration', icon: icon(ApiOutlined), label: '接入指南' }] },
   ]
+  const allowed = (entry: MenuEntry) => !entry.functions || entry.functions.some(fn => hub.can(fn))
+  const items: Record<string, unknown>[] = [{ key: '/', icon: icon(DashboardOutlined), label: '概览' }]
+  for (const group of groups) {
+    const children = group.children.filter(allowed).map(({ key, icon, label }) => ({ key, icon, label }))
+    if (children.length) items.push({ type: 'group', key: group.key, label: group.label, children })
+  }
   return items
 })
 
@@ -145,13 +153,13 @@ onBeforeUnmount(() => { window.removeEventListener('session-expired', expire); c
                 <span class="avatar">{{ initial }}</span>
                 <span class="account-meta">
                   <span class="account-name">{{ hub.me.displayName }}</span>
-                  <span class="account-role">{{ roleLabels[hub.me.role] }}</span>
+                  <span class="account-role">{{ hub.me.roleName }}</span>
                 </span>
                 <DownOutlined class="caret" />
               </button>
               <template #overlay>
                 <a-menu>
-                  <a-menu-item key="who" disabled>登录账号：{{ hub.me.username }} · {{ roleLabels[hub.me.role] }}</a-menu-item>
+                  <a-menu-item key="who" disabled>登录账号：{{ hub.me.username }} · {{ hub.me.roleName }}</a-menu-item>
                   <a-menu-divider />
                   <a-menu-item key="mfa" @click="mfaOpen = true"><SafetyOutlined /> 两步验证{{ hub.me.mfaEnabled ? '（已启用）' : '' }}</a-menu-item>
                   <a-menu-item key="password" @click="passwordOpen = true"><LockOutlined /> 修改密码</a-menu-item>

@@ -1,0 +1,756 @@
+{
+  "GET /api/admin/access-requests" : {
+    "items" : [ {
+      "applicationId" : "integer",
+      "applicationName" : "string",
+      "createdAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+      "decidedAt" : "null",
+      "decidedBy" : "null",
+      "decisionComment" : "string",
+      "departmentId" : "integer",
+      "departmentName" : "string",
+      "durationDays" : "integer",
+      "externalId" : "string",
+      "grantExpiresAt" : "null",
+      "id" : "integer",
+      "reason" : "string",
+      "requestedBy" : "string",
+      "roleCode" : "string",
+      "roleEnabled" : "boolean",
+      "roleId" : "integer",
+      "roleName" : "string",
+      "status" : "string",
+      "userId" : "integer",
+      "userName" : "string"
+    } ],
+    "page" : "integer",
+    "size" : "integer",
+    "total" : "integer"
+  },
+  "GET /api/admin/accounts" : [ {
+    "activeSessions" : "integer",
+    "allApplications" : "boolean",
+    "applicationIds" : [ ],
+    "createdAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+    "displayName" : "string",
+    "enabled" : "boolean",
+    "failedAttempts" : "integer",
+    "lastLoginAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+    "locked" : "integer",
+    "lockedUntil" : "null",
+    "mfaEnabled" : "integer",
+    "passwordChangedAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+    "role" : "string",
+    "username" : "string"
+  } ],
+  "GET /api/admin/applications" : [ {
+    "activeKeyCount" : "integer",
+    "code" : "string",
+    "createdAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+    "description" : "string",
+    "enabled" : "boolean",
+    "id" : "integer",
+    "name" : "string",
+    "owner" : "string",
+    "permissionCount" : "integer",
+    "rateLimit" : "null",
+    "roleCount" : "integer"
+  } ],
+  "GET /api/admin/applications/{id}/keys" : [ {
+    "createdAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+    "createdBy" : "string",
+    "expiresAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd|null",
+    "id" : "integer",
+    "lastUsedAt" : "null",
+    "name" : "string",
+    "prefix" : "string",
+    "revokedAt" : "null",
+    "status" : "string"
+  } ],
+  "GET /api/admin/applications/{id}/webhooks" : [ {
+    "createdAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+    "createdBy" : "string",
+    "enabled" : "boolean",
+    "events" : [ "string" ],
+    "failed" : "integer",
+    "id" : "integer",
+    "lastDeliveredAt" : "null",
+    "name" : "string",
+    "pending" : "integer",
+    "url" : "string"
+  } ],
+  "GET /api/admin/assignments" : {
+    "items" : [ {
+      "email" : "string",
+      "enabled" : "boolean",
+      "externalId" : "string",
+      "id" : "integer",
+      "name" : "string",
+      "roleExpiries" : {
+        "<number>" : "absent|datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd"
+      },
+      "roleIds" : [ "integer" ]
+    } ],
+    "page" : "integer",
+    "size" : "integer",
+    "total" : "integer"
+  },
+  "GET /api/admin/assignments/expiring" : [ {
+    "applicationId" : "integer",
+    "applicationName" : "string",
+    "departmentId" : "integer",
+    "departmentName" : "string",
+    "expiresAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+    "externalId" : "string",
+    "grantedAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+    "grantedBy" : "string",
+    "roleCode" : "string",
+    "roleId" : "integer",
+    "roleName" : "string",
+    "userId" : "integer",
+    "userName" : "string"
+  } ],
+  "GET /api/admin/audit" : {
+    "items" : [ {
+      "action" : "string",
+      "actor" : "string",
+      "applicationId" : "integer",
+      "applicationName" : "string",
+      "createdAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+      "departmentId" : "integer|null",
+      "departmentName" : "null|string",
+      "detail" : "string",
+      "id" : "integer",
+      "sourceIp" : "string",
+      "target" : "string"
+    } ],
+    "page" : "integer",
+    "size" : "integer",
+    "total" : "integer"
+  },
+  "GET /api/admin/audit/export" : {
+    "items" : [ {
+      "action" : "string",
+      "actor" : "string",
+      "applicationId" : "integer",
+      "applicationName" : "string",
+      "createdAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+      "departmentId" : "integer|null",
+      "departmentName" : "null|string",
+      "detail" : "string",
+      "id" : "integer",
+      "sourceIp" : "string",
+      "target" : "string"
+    } ],
+    "page" : "integer",
+    "size" : "integer",
+    "total" : "integer"
+  },
+  "GET /api/admin/departments" : [ {
+    "code" : "string",
+    "createdAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+    "id" : "integer",
+    "memberCount" : "integer",
+    "name" : "string",
+    "roleCount" : "integer"
+  } ],
+  "GET /api/admin/manifest" : {
+    "application" : {
+      "code" : "string",
+      "name" : "string"
+    },
+    "departments" : [ {
+      "code" : "string",
+      "name" : "string",
+      "permissions" : [ {
+        "action" : "string",
+        "code" : "string",
+        "name" : "string",
+        "resource" : "string"
+      } ],
+      "roles" : [ {
+        "code" : "string",
+        "description" : "string",
+        "enabled" : "boolean",
+        "name" : "string",
+        "permissions" : [ "string" ]
+      } ]
+    } ],
+    "exportedAt" : "datetime:dddd-dd-ddTdd:dd:dd.dddddddddZ",
+    "version" : "integer"
+  },
+  "GET /api/admin/overview" : {
+    "activeContexts" : "integer",
+    "activeKeys" : "integer",
+    "applications" : "integer",
+    "auditLast24h" : "integer",
+    "departmentMembers" : "integer",
+    "departments" : "integer",
+    "enabledApplications" : "integer",
+    "enabledUsers" : "integer",
+    "members" : "integer",
+    "permissions" : "integer",
+    "roles" : "integer",
+    "users" : "integer"
+  },
+  "GET /api/admin/permissions" : [ {
+    "action" : "string",
+    "code" : "string",
+    "createdAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+    "id" : "integer",
+    "name" : "string",
+    "resource" : "string",
+    "roleCount" : "integer"
+  } ],
+  "GET /api/admin/permissions/who" : {
+    "applicationId" : "integer",
+    "code" : "string",
+    "holders" : [ {
+      "departmentId" : "integer",
+      "departmentName" : "string",
+      "externalId" : "string",
+      "roles" : [ {
+        "code" : "string",
+        "expiresAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd|null",
+        "id" : "integer",
+        "name" : "string"
+      } ],
+      "userId" : "integer",
+      "userName" : "string"
+    } ],
+    "total" : "integer",
+    "truncated" : "boolean"
+  },
+  "GET /api/admin/reviews" : [ {
+    "applicationId" : "integer",
+    "applicationName" : "string",
+    "closedAt" : "null",
+    "closedBy" : "null",
+    "createdAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+    "createdBy" : "string",
+    "departmentId" : "integer",
+    "departmentName" : "string",
+    "dueAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+    "id" : "integer",
+    "items" : "integer",
+    "kept" : "integer",
+    "name" : "string",
+    "pending" : "integer",
+    "revoked" : "integer",
+    "skipped" : "integer",
+    "status" : "string"
+  } ],
+  "GET /api/admin/reviews/{id}" : {
+    "applicationId" : "integer",
+    "applicationName" : "string",
+    "closedAt" : "null",
+    "closedBy" : "null",
+    "createdAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+    "createdBy" : "string",
+    "departmentId" : "integer",
+    "departmentName" : "string",
+    "dueAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+    "id" : "integer",
+    "items" : "integer",
+    "kept" : "integer",
+    "name" : "string",
+    "pending" : "integer",
+    "revoked" : "integer",
+    "skipped" : "integer",
+    "status" : "string",
+    "summary" : "string"
+  },
+  "GET /api/admin/reviews/{id}/items" : {
+    "items" : [ {
+      "applied" : "boolean",
+      "comment" : "string",
+      "decidedAt" : "null",
+      "decidedBy" : "null",
+      "decision" : "string",
+      "departmentId" : "integer",
+      "departmentName" : "string",
+      "externalId" : "string",
+      "id" : "integer",
+      "roleCode" : "string",
+      "roleId" : "integer",
+      "roleName" : "string",
+      "skipped" : "boolean",
+      "userId" : "integer",
+      "userName" : "string"
+    } ],
+    "page" : "integer",
+    "size" : "integer",
+    "total" : "integer"
+  },
+  "GET /api/admin/roles" : [ {
+    "code" : "string",
+    "createdAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+    "description" : "string",
+    "enabled" : "boolean",
+    "id" : "integer",
+    "memberCount" : "integer",
+    "name" : "string",
+    "permissionIds" : [ "integer" ]
+  } ],
+  "GET /api/admin/roles/{id}/members" : [ {
+    "email" : "string",
+    "enabled" : "boolean",
+    "externalId" : "string",
+    "id" : "integer",
+    "name" : "string"
+  } ],
+  "GET /api/admin/search" : {
+    "applications" : [ {
+      "code" : "string",
+      "enabled" : "boolean",
+      "id" : "integer",
+      "name" : "string"
+    } ],
+    "departments" : [ {
+      "code" : "string",
+      "id" : "integer",
+      "name" : "string"
+    } ],
+    "roles" : [ {
+      "applicationId" : "integer",
+      "applicationName" : "string",
+      "code" : "string",
+      "departmentId" : "integer",
+      "departmentName" : "string",
+      "id" : "integer",
+      "name" : "string"
+    } ],
+    "users" : [ {
+      "enabled" : "boolean",
+      "externalId" : "string",
+      "id" : "integer",
+      "name" : "string"
+    } ]
+  },
+  "GET /api/admin/system/status" : {
+    "audit" : {
+      "anchorSeq" : "integer",
+      "lastHash" : "string",
+      "lastId" : "integer",
+      "lastSeq" : "integer",
+      "sealedCount" : "integer",
+      "total" : "integer",
+      "unsealed" : "integer",
+      "updatedAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd"
+    },
+    "cache" : "string",
+    "counts" : {
+      "activeContexts" : "integer",
+      "applications" : "integer",
+      "assignments" : "integer",
+      "departments" : "integer",
+      "enabledApplications" : "integer",
+      "enabledUsers" : "integer",
+      "permissions" : "integer",
+      "roles" : "integer",
+      "users" : "integer"
+    },
+    "database" : "string",
+    "databaseLatencyMs" : "integer",
+    "expiringIn7Days" : "integer",
+    "javaVersion" : "string",
+    "openReviews" : "integer",
+    "pendingRequests" : "integer",
+    "uptimeSeconds" : "integer",
+    "version" : "string",
+    "webhookBacklog" : "integer"
+  },
+  "GET /api/admin/users" : {
+    "items" : [ {
+      "activeDepartmentId" : "null",
+      "contextVersion" : "integer",
+      "createdAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+      "departmentIds" : [ "integer" ],
+      "email" : "string",
+      "enabled" : "boolean",
+      "externalId" : "string",
+      "id" : "integer",
+      "name" : "string"
+    } ],
+    "page" : "integer",
+    "size" : "integer",
+    "total" : "integer"
+  },
+  "GET /api/admin/users/export" : {
+    "items" : [ {
+      "activeDepartmentId" : "null",
+      "contextVersion" : "integer",
+      "createdAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+      "departmentIds" : [ "integer" ],
+      "email" : "string",
+      "enabled" : "boolean",
+      "externalId" : "string",
+      "id" : "integer",
+      "name" : "string"
+    } ],
+    "page" : "integer",
+    "size" : "integer",
+    "total" : "integer"
+  },
+  "GET /api/admin/users/{id}/access" : {
+    "contexts" : [ ],
+    "domains" : [ {
+      "applicationEnabled" : "boolean",
+      "applicationId" : "integer",
+      "applicationName" : "string",
+      "departmentId" : "integer",
+      "departmentName" : "string",
+      "permissions" : [ "string" ],
+      "roles" : [ {
+        "code" : "string",
+        "enabled" : "boolean",
+        "expiresAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+        "grantedBy" : "string",
+        "id" : "integer",
+        "name" : "string"
+      } ]
+    } ],
+    "user" : {
+      "activeDepartmentId" : "null",
+      "contextVersion" : "integer",
+      "createdAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+      "departmentIds" : [ "integer" ],
+      "email" : "string",
+      "enabled" : "boolean",
+      "externalId" : "string",
+      "id" : "integer",
+      "name" : "string"
+    }
+  },
+  "GET /api/admin/users/{id}/roles" : {
+    "roleExpiries" : {
+      "<number>" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd"
+    },
+    "roleIds" : [ "integer" ]
+  },
+  "GET /api/admin/webhooks/{id}/deliveries" : {
+    "items" : [ {
+      "attempts" : "integer",
+      "createdAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+      "deliveredAt" : "null",
+      "eventId" : "string",
+      "eventType" : "string",
+      "id" : "integer",
+      "lastError" : "string",
+      "lastStatus" : "null",
+      "nextAttemptAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+      "status" : "string"
+    } ],
+    "page" : "integer",
+    "size" : "integer",
+    "total" : "integer"
+  },
+  "GET /api/auth/me" : {
+    "allApplications" : "boolean",
+    "applicationIds" : [ ],
+    "displayName" : "string",
+    "functions" : [ "string" ],
+    "mfaEnabled" : "boolean",
+    "role" : "string",
+    "roleName" : "string",
+    "username" : "string"
+  },
+  "GET /api/health" : {
+    "cache" : "string",
+    "database" : "string",
+    "model" : "string",
+    "status" : "string"
+  },
+  "GET /api/v1/access-requests" : [ {
+    "applicationId" : "integer",
+    "applicationName" : "string",
+    "createdAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+    "decidedAt" : "null",
+    "decidedBy" : "null",
+    "decisionComment" : "string",
+    "departmentId" : "integer",
+    "departmentName" : "string",
+    "durationDays" : "integer",
+    "externalId" : "string",
+    "grantExpiresAt" : "null",
+    "id" : "integer",
+    "reason" : "string",
+    "requestedBy" : "string",
+    "roleCode" : "string",
+    "roleEnabled" : "boolean",
+    "roleId" : "integer",
+    "roleName" : "string",
+    "status" : "string",
+    "userId" : "integer",
+    "userName" : "string"
+  } ],
+  "GET /api/v1/contexts/effective" : {
+    "applicationId" : "integer",
+    "contextVersion" : "integer",
+    "departmentId" : "integer",
+    "expiresAt" : "datetime:dddd-dd-ddTdd:dd:ddZ",
+    "permissions" : [ "string" ],
+    "roles" : [ {
+      "code" : "string",
+      "id" : "integer",
+      "name" : "string"
+    } ],
+    "userId" : "integer"
+  },
+  "GET /api/v1/departments" : [ {
+    "code" : "string",
+    "createdAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+    "id" : "integer",
+    "memberCount" : "integer",
+    "name" : "string",
+    "roleCount" : "integer"
+  } ],
+  "GET /api/v1/departments/{dept}/permissions" : [ {
+    "action" : "string",
+    "code" : "string",
+    "createdAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+    "id" : "integer",
+    "name" : "string",
+    "resource" : "string",
+    "roleCount" : "integer"
+  } ],
+  "GET /api/v1/departments/{dept}/roles" : [ {
+    "code" : "string",
+    "createdAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+    "description" : "string",
+    "enabled" : "boolean",
+    "id" : "integer",
+    "memberCount" : "integer",
+    "name" : "string",
+    "permissionIds" : [ "integer" ]
+  } ],
+  "GET /api/v1/departments/{dept}/users" : [ {
+    "enabled" : "boolean",
+    "externalId" : "string",
+    "id" : "integer",
+    "name" : "string"
+  } ],
+  "GET /api/v1/departments/{dept}/users/{id}/roles" : {
+    "roleExpiries" : {
+      "<number>" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd"
+    },
+    "roleIds" : [ "integer" ]
+  },
+  "GET /api/v1/users/access" : {
+    "applicationId" : "integer",
+    "departmentId" : "integer",
+    "permissions" : [ "string" ],
+    "roles" : [ {
+      "code" : "string",
+      "enabled" : "boolean",
+      "expiresAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+      "id" : "integer",
+      "name" : "string"
+    } ],
+    "userId" : "integer"
+  },
+  "POST /api/admin/access-requests/{id}/approve" : {
+    "applicationId" : "integer",
+    "applicationName" : "string",
+    "createdAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+    "decidedAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+    "decidedBy" : "string",
+    "decisionComment" : "string",
+    "departmentId" : "integer",
+    "departmentName" : "string",
+    "durationDays" : "integer",
+    "externalId" : "string",
+    "grantExpiresAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+    "id" : "integer",
+    "reason" : "string",
+    "requestedBy" : "string",
+    "roleCode" : "string",
+    "roleEnabled" : "boolean",
+    "roleId" : "integer",
+    "roleName" : "string",
+    "status" : "string",
+    "userId" : "integer",
+    "userName" : "string"
+  },
+  "POST /api/admin/applications" : {
+    "apiKey" : "string",
+    "id" : "integer",
+    "keyId" : "integer"
+  },
+  "POST /api/admin/applications/{id}/keys" : {
+    "apiKey" : "string",
+    "expiresAt" : "datetime:dddd-dd-ddTdd:dd:ddZ",
+    "id" : "integer",
+    "name" : "string",
+    "prefix" : "string"
+  },
+  "POST /api/admin/applications/{id}/webhooks" : {
+    "id" : "integer",
+    "secret" : "string"
+  },
+  "POST /api/admin/assignments/batch" : {
+    "changedUsers" : "integer",
+    "grantsAdded" : "integer",
+    "users" : "integer"
+  },
+  "POST /api/admin/domains/copy" : {
+    "permissionsCreated" : "integer",
+    "permissionsSkipped" : "integer",
+    "rolesCreated" : "integer",
+    "rolesSkipped" : "integer"
+  },
+  "POST /api/admin/manifest/import" : {
+    "permissionsCreated" : "integer",
+    "permissionsUpdated" : "integer",
+    "rolesCreated" : "integer",
+    "rolesUpdated" : "integer"
+  },
+  "POST /api/admin/reviews" : {
+    "applicationId" : "integer",
+    "applicationName" : "string",
+    "closedAt" : "null",
+    "closedBy" : "null",
+    "createdAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+    "createdBy" : "string",
+    "departmentId" : "integer",
+    "departmentName" : "string",
+    "dueAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+    "id" : "integer",
+    "items" : "integer",
+    "kept" : "integer",
+    "name" : "string",
+    "pending" : "integer",
+    "revoked" : "integer",
+    "skipped" : "integer",
+    "status" : "string",
+    "summary" : "string"
+  },
+  "POST /api/admin/reviews/{id}/close" : {
+    "applicationId" : "integer",
+    "applicationName" : "string",
+    "closedAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+    "closedBy" : "string",
+    "createdAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+    "createdBy" : "string",
+    "departmentId" : "integer",
+    "departmentName" : "string",
+    "dueAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+    "id" : "integer",
+    "items" : "integer",
+    "kept" : "integer",
+    "name" : "string",
+    "pending" : "integer",
+    "revoked" : "integer",
+    "skipped" : "integer",
+    "status" : "string",
+    "summary" : "string"
+  },
+  "POST /api/admin/simulate" : {
+    "allowed" : "boolean",
+    "applicationEnabled" : "boolean",
+    "decisions" : {
+      "item:delete" : "boolean",
+      "item:read" : "boolean",
+      "item:write" : "boolean"
+    },
+    "eligible" : "boolean",
+    "issues" : [ ],
+    "member" : "boolean",
+    "notices" : [ ],
+    "permissions" : [ {
+      "action" : "string",
+      "code" : "string",
+      "grantedBy" : [ "integer" ],
+      "id" : "integer",
+      "name" : "string",
+      "resource" : "string"
+    } ],
+    "roles" : [ {
+      "active" : "boolean",
+      "code" : "string",
+      "enabled" : "boolean",
+      "expired" : "boolean",
+      "expiresAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+      "id" : "integer",
+      "name" : "string"
+    } ],
+    "switchesDepartment" : "boolean",
+    "user" : {
+      "activeDepartmentId" : "null",
+      "contextVersion" : "integer",
+      "createdAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+      "email" : "string",
+      "enabled" : "boolean",
+      "externalId" : "string",
+      "id" : "integer",
+      "name" : "string"
+    }
+  },
+  "POST /api/admin/users/import" : {
+    "created" : "integer",
+    "failed" : [ {
+      "error" : "string",
+      "externalId" : "string",
+      "line" : "integer"
+    } ],
+    "updated" : "integer"
+  },
+  "POST /api/auth/login" : {
+    "allApplications" : "boolean",
+    "applicationIds" : [ ],
+    "displayName" : "string",
+    "expiresIn" : "integer",
+    "functions" : [ "string" ],
+    "idleTimeout" : "integer",
+    "mfaEnabled" : "boolean",
+    "role" : "string",
+    "roleName" : "string",
+    "token" : "string",
+    "username" : "string"
+  },
+  "POST /api/v1/access-requests" : {
+    "applicationId" : "integer",
+    "applicationName" : "string",
+    "createdAt" : "datetime:dddd-dd-ddTdd:dd:dd.ddd+dd:dd",
+    "decidedAt" : "null",
+    "decidedBy" : "null",
+    "decisionComment" : "string",
+    "departmentId" : "integer",
+    "departmentName" : "string",
+    "durationDays" : "integer",
+    "externalId" : "string",
+    "grantExpiresAt" : "null",
+    "id" : "integer",
+    "reason" : "string",
+    "requestedBy" : "string",
+    "roleCode" : "string",
+    "roleEnabled" : "boolean",
+    "roleId" : "integer",
+    "roleName" : "string",
+    "status" : "string",
+    "userId" : "integer",
+    "userName" : "string"
+  },
+  "POST /api/v1/contexts" : {
+    "applicationId" : "integer",
+    "contextToken" : "string",
+    "contextVersion" : "integer",
+    "departmentId" : "integer",
+    "expiresAt" : "datetime:dddd-dd-ddTdd:dd:ddZ",
+    "permissions" : [ "string" ],
+    "roles" : [ {
+      "code" : "string",
+      "id" : "integer",
+      "name" : "string"
+    } ],
+    "userId" : "integer"
+  },
+  "POST /api/v1/contexts/check" : {
+    "allowed" : "boolean",
+    "contextVersion" : "integer",
+    "decisions" : {
+      "item:delete" : "boolean",
+      "item:read" : "boolean"
+    }
+  }
+}

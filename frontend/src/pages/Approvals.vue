@@ -112,7 +112,7 @@ async function save() {
             <span v-else class="muted">—</span>
           </template>
           <template v-else-if="column.key === 'actions'">
-            <a-space v-if="record.status === 'PENDING' && hub.canWriteApp(record.applicationId)" :size="4">
+            <a-space v-if="record.status === 'PENDING' && hub.can('request.approve', record.applicationId)" :size="4">
               <a @click="approve(record)">批准</a>
               <a-divider type="vertical" />
               <a class="danger-link" @click="reject(record)">驳回</a>

@@ -45,7 +45,7 @@ async function save() {
 
 const drawerOpen = ref(false), current = ref<AccessReview>()
 function detail(row: AccessReview) { current.value = row; drawerOpen.value = true }
-const createableApps = computed(() => hub.applicationOptions.filter(o => hub.canWriteApp(o.value)))
+const createableApps = computed(() => hub.applicationOptions.filter(o => hub.can('review.manage', o.value)))
 </script>
 
 <template>
@@ -78,7 +78,7 @@ const createableApps = computed(() => hub.applicationOptions.filter(o => hub.can
             <div class="cell-main">{{ record.createdBy }}</div>
             <div class="cell-sub">{{ fmt(record.createdAt) }}</div>
           </template>
-          <template v-else-if="column.key === 'actions'"><a @click="detail(record)">{{ record.status === 'OPEN' && hub.canWriteApp(record.applicationId) ? '处理' : '明细' }}</a></template>
+          <template v-else-if="column.key === 'actions'"><a @click="detail(record)">{{ record.status === 'OPEN' && hub.can('review.manage', record.applicationId) ? '处理' : '明细' }}</a></template>
         </template>
         <template #emptyText><a-empty description="还没有复核记录" :image-style="{ height: '40px' }" /></template>
       </a-table>

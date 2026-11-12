@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { get, session } from './api'
-import type { Application, Department, Health, Principal } from './types'
+import type { AdminFunctionCode, Application, Department, Health, Principal } from './types'
 
 const DEPARTMENT = 'melonhub-department', APPLICATION = 'melonhub-application'
 
@@ -20,11 +20,15 @@ export const useHub = defineStore('hub', () => {
   const domainKey = computed(() => hasDomain.value ? `${departmentId.value}:${applicationId.value}` : '')
   const domainQuery = computed(() => ({ departmentId: departmentId.value, applicationId: applicationId.value }))
 
-  const role = computed(() => me.value?.role)
-  const isSuper = computed(() => role.value === 'SUPER_ADMIN')
-  const canPlatform = computed(() => role.value === 'SUPER_ADMIN' || role.value === 'ADMIN')
-  function canWriteApp(id: number) { return canPlatform.value || (role.value === 'APP_ADMIN' && !!me.value?.applicationIds.includes(id)) }
-  const canDomain = computed(() => hasDomain.value && canWriteApp(applicationId.value))
+  const functions = computed(() => new Set(me.value?.functions ?? []))
+  /** Whether the signed-in role grants the function, and, when an application is given, may use it there. */
+  function can(fn: AdminFunctionCode, application?: number) {
+    if (!functions.value.has(fn)) return false
+    return application === undefined || !!me.value?.allApplications || !!me.value?.applicationIds.includes(application)
+  }
+  const canConfigure = computed(() => hasDomain.value && can('domain.configure', applicationId.value))
+  const canAssign = computed(() => hasDomain.value && can('domain.assign', applicationId.value))
+  const canTransfer = computed(() => hasDomain.value && can('domain.transfer', applicationId.value))
 
   const departmentName = (id: number | null | undefined) => id ? departments.value.find(d => d.id === id)?.name ?? `部门 #${id}` : '—'
   const applicationName = (id: number | null | undefined) => id ? applications.value.find(a => a.id === id)?.name ?? `软件 #${id}` : '—'
@@ -67,7 +71,7 @@ export const useHub = defineStore('hub', () => {
 
   return {
     me, departments, applications, departmentId, applicationId, health, department, application, hasDomain, domainKey, domainQuery,
-    role, isSuper, canPlatform, canWriteApp, canDomain, departmentName, applicationName, departmentOptions, applicationOptions,
+    can, canConfigure, canAssign, canTransfer, departmentName, applicationName, departmentOptions, applicationOptions,
     setDomain, loadLists, refreshHealth, signIn, signOut,
   }
 })

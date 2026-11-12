@@ -89,7 +89,7 @@ function exportRows() {
     <PageHead title="部门" description="选中部门，在配置抽屉中管理软件、角色和成员授权。">
       <a-button @click="exportRows"><ExportOutlined />导出列表</a-button>
       <a-button :loading="loading" @click="reload"><ReloadOutlined />刷新</a-button>
-      <a-button v-if="hub.canPlatform" type="primary" @click="edit()"><PlusOutlined />新建部门</a-button>
+      <a-button v-if="hub.can('department.manage')" type="primary" @click="edit()"><PlusOutlined />新建部门</a-button>
     </PageHead>
     <a-card :bordered="false">
       <div class="toolbar">
@@ -104,7 +104,7 @@ function exportRows() {
           <template v-else-if="column.key === 'actions'">
             <a-space :size="4" class="row-actions">
               <a @click="manage(record)">软件与授权</a>
-              <template v-if="hub.canPlatform">
+              <template v-if="hub.can('department.manage')">
                 <a-divider type="vertical" />
                 <a @click="edit(record)">编辑</a>
                 <a-divider type="vertical" />
