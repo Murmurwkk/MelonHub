@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.melonhub.rbac.dao.Visibility;
 import com.melonhub.rbac.dao.AuditDao;
 import com.melonhub.rbac.dao.GovernanceDao;
 import com.melonhub.rbac.dao.WebhookDao;
@@ -39,6 +40,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -68,6 +70,7 @@ class GovernanceIntegrationTest {
     @Autowired AuditDao auditDao;
     @Autowired WebhookDao webhookDao;
     @Autowired MockMvc mvc;
+    @Value("${melonhub.admin-username}") String bootstrap;
     @Autowired ObjectMapper mapper;
     @Autowired JdbcTemplate db;
 
@@ -206,7 +209,7 @@ class GovernanceIntegrationTest {
     }
 
     @Test void mfaRequiresCurrentCodeAndNeverReplaysOne() {
-        var root = TestAdmins.superAdmin(ACTOR);
+        var root = auth.principal(bootstrap);
         String username = "mfa-" + Credentials.token().substring(0, 8);
         String password = "mfa-password-123";
         auth.createAccount(new Requests.Account(username, "MFA 用户", "AUDITOR", password, true, null), root);
@@ -314,12 +317,12 @@ class GovernanceIntegrationTest {
     private long sealSeq(long id) { return db.queryForObject("SELECT seal_seq FROM audit_events WHERE id=?", Long.class, id); }
 
     @Test void manifestExportAndImportRoundTrip() {
-        var exported = g.exportManifest(a1, d1);
+        var exported = g.exportManifest(a1, d1, null);
         assertThat((List<?>) exported.get("departments")).hasSize(1);
         var manifest = mapper.convertValue(exported, Requests.Manifest.class);
         db.update("UPDATE roles SET name='改名',description='漂移' WHERE id=?", r1);
         db.update("DELETE FROM role_permissions WHERE role_id=?", r2);
-        var result = g.importManifest(a1, manifest, "admin");
+        var result = g.importManifest(a1, manifest, "admin", null);
         assertThat(((Number) result.get("rolesUpdated")).intValue()).isEqualTo(2);
         assertThat(((Number) result.get("permissionsUpdated")).intValue()).isEqualTo(2);
         var roles = r.roles(d1, a1);
@@ -328,9 +331,9 @@ class GovernanceIntegrationTest {
         var writer = roles.stream().filter(role -> ((Number) role.get("id")).longValue() == r2).findFirst().orElseThrow();
         assertThat((List<?>) writer.get("permissionIds")).hasSize(1);
         // Importing into another department creates the configuration there.
-        var second = g.importManifest(a1, manifest, "admin");
+        var second = g.importManifest(a1, manifest, "admin", null);
         var target = new Requests.ManifestDepartment(code2, manifest.departments().get(0).permissions(), manifest.departments().get(0).roles());
-        var copied = g.importManifest(a1, new Requests.Manifest(1, List.of(target)), "admin");
+        var copied = g.importManifest(a1, new Requests.Manifest(1, List.of(target)), "admin", null);
         assertThat(((Number) copied.get("permissionsCreated")).intValue()).isEqualTo(2);
         assertThat(((Number) copied.get("rolesCreated")).intValue()).isEqualTo(2);
         assertThat(r.roles(d2, a1)).hasSize(2);
@@ -353,14 +356,14 @@ class GovernanceIntegrationTest {
     }
 
     @Test void reverseLookupSearchAndStatus() {
-        var holders = g.permissionHolders(a1, "item:read", null);
+        var holders = g.permissionHolders(a1, "item:read", null, null);
         assertThat(((Number) holders.get("total")).intValue()).isEqualTo(1);
-        assertThat(((Number) g.permissionHolders(a1, "item:write", null).get("total")).longValue()).isZero();
-        assertThat(((Number) g.permissionHolders(a1, "no:such", null).get("total")).longValue()).isZero();
-        var found = console.search(external, null);
+        assertThat(((Number) g.permissionHolders(a1, "item:write", null, null).get("total")).longValue()).isZero();
+        assertThat(((Number) g.permissionHolders(a1, "no:such", null, null).get("total")).longValue()).isZero();
+        var found = console.search(external, Visibility.ALL);
         assertThat((List<?>) found.get("users")).isNotEmpty();
-        assertThat((List<?>) console.search("reader", null).get("roles")).isNotEmpty();
-        var status = console.status(null);
+        assertThat((List<?>) console.search("reader", Visibility.ALL).get("roles")).isNotEmpty();
+        var status = console.status(Visibility.ALL);
         assertThat(status.get("database")).isEqualTo("UP");
         assertThat(((Map<?,?>) status.get("counts")).get("users")).isNotNull();
         assertThat(status.get("audit")).isNotNull();
@@ -368,8 +371,8 @@ class GovernanceIntegrationTest {
 
     @Test void expiringAssignmentsAppearInReport() {
         r.userRoles(u1, d1, a1, List.of(r1), 7, ACTOR);
-        assertThat(g.expiringAssignments(30, null, a1)).anyMatch(row -> ((Number) row.get("userId")).longValue() == u1);
-        assertThat(g.expiringAssignments(3, null, a1)).noneMatch(row -> ((Number) row.get("userId")).longValue() == u1);
+        assertThat(g.expiringAssignments(30, Visibility.ALL, a1)).anyMatch(row -> ((Number) row.get("userId")).longValue() == u1);
+        assertThat(g.expiringAssignments(3, Visibility.ALL, a1)).noneMatch(row -> ((Number) row.get("userId")).longValue() == u1);
         // An expired assignment is excluded from new contexts immediately.
         db.update("UPDATE user_roles SET expires_at=TIMESTAMPADD(SECOND,-5,CURRENT_TIMESTAMP) WHERE user_id=? AND role_id=?", u1, r1);
         assertThat((List<?>) c.effective(a1, issue()).get("permissions")).isEmpty();
@@ -384,7 +387,7 @@ class GovernanceIntegrationTest {
     }
 
     private String cacheHealth() {
-        try { return console.status(null).get("cache").toString(); } catch (RuntimeException e) { return "DOWN"; }
+        try { return console.status(Visibility.ALL).get("cache").toString(); } catch (RuntimeException e) { return "DOWN"; }
     }
 
     @Test void contextCreationCanRefuseToSwitchTheCurrentDepartment() throws Exception {
@@ -420,20 +423,20 @@ class GovernanceIntegrationTest {
     @Test void manifestImportAnnouncesRolesItDisablesOrRegrants() {
         long hook = ((Number) webhooks.create(a1, new Requests.Webhook("清单通知", "http://127.0.0.1:1/hook", null, List.of("*"), true), ACTOR)
                 .get("id")).longValue();
-        var section = mapper.convertValue(g.exportManifest(a1, d1), Requests.Manifest.class).departments().get(0);
+        var section = mapper.convertValue(g.exportManifest(a1, d1, null), Requests.Manifest.class).departments().get(0);
         var roles = section.roles().stream().map(role -> switch (role.code()) {
             case "reader" -> new Requests.ManifestRole(role.code(), role.name(), role.description(), false, role.permissions());
             case "writer" -> new Requests.ManifestRole(role.code(), role.name(), role.description(), true, List.of("item:read", "item:write"));
             default -> role;
         }).toList();
         var manifest = new Requests.Manifest(1, List.of(new Requests.ManifestDepartment(section.code(), section.permissions(), roles)));
-        g.importManifest(a1, manifest, "admin");
+        g.importManifest(a1, manifest, "admin", null);
         var events = db.queryForList("SELECT payload FROM webhook_deliveries WHERE webhook_id=? ORDER BY id", String.class, hook);
         assertThat(events).hasSize(2);
         assertThat(events).anySatisfy(payload -> assertThat(payload).contains("\"role.disabled\"").contains("\"roleId\":" + r1));
         assertThat(events).anySatisfy(payload -> assertThat(payload).contains("\"role.permissions.changed\"").contains("\"roleId\":" + r2));
         // Importing the same manifest again changes nothing, so nothing is announced.
-        g.importManifest(a1, manifest, "admin");
+        g.importManifest(a1, manifest, "admin", null);
         assertThat(db.queryForObject("SELECT COUNT(*) FROM webhook_deliveries WHERE webhook_id=?", Long.class, hook)).isEqualTo(2);
     }
 
@@ -531,14 +534,14 @@ class GovernanceIntegrationTest {
         assertThat(cancelled.get("status")).isEqualTo("CANCELLED");
         assertThat(cancelled.get("roleId")).isNull();
         assertThat(cancelled.get("roleCode")).isEqualTo("writer");
-        r.deleteUser(u1, ACTOR);
+        r.deleteUser(u1, ACTOR, null);
         var history = g.request(approved);
         assertThat(history.get("status")).isEqualTo("APPROVED");
         assertThat(history.get("userId")).isNull();
         assertThat(history.get("externalId")).isEqualTo(external);
         assertThat(history.get("userName")).isEqualTo("GovUser");
         assertThat(history.get("roleName")).isEqualTo("Writer");
-        assertThat(((Number) g.requests(a1, null, null, external, 1, 20).get("total")).intValue()).isEqualTo(2);
+        assertThat(((Number) g.requests(a1, Visibility.ALL, null, external, 1, 20).get("total")).intValue()).isEqualTo(2);
         var items = (List<Map<String,Object>>) g.reviewItems(reviewId, null, 1, 50).get("items");
         assertThat(items).hasSize(2).allSatisfy(item -> assertThat(item.get("externalId")).isEqualTo(external));
         for (var item : items) g.decideReviewItem(reviewId, requestId(item), new Requests.ReviewItemDecision("REVOKE", null), "admin");
@@ -587,7 +590,7 @@ class GovernanceIntegrationTest {
         r.rolePermissions(r2, d1, a1, List.of(read, write), ACTOR);
         r.userRoles(u1, d1, a1, List.of(r1, r2), ACTOR);
         r.userRoles(u2, d1, a1, List.of(r2), ACTOR);
-        var holders = g.permissionHolders(a1, "item:read", null);
+        var holders = g.permissionHolders(a1, "item:read", null, null);
         assertThat(((Number) holders.get("total")).longValue()).isEqualTo(2);
         assertThat(holders.get("truncated")).isEqualTo(false);
         assertThat((List<?>) holders.get("holders")).hasSize(2).anySatisfy(holder ->
@@ -664,7 +667,7 @@ class GovernanceIntegrationTest {
         r.deletePermission(permission, d1, a1, ACTOR);
         r.roleStatus(r2, d1, a1, true, ACTOR);
         r.deleteRole(r2, d1, a1, ACTOR);
-        r.revokeUserContexts(u1, ACTOR);
+        r.revokeUserContexts(u1, ACTOR, null);
         assertThat(db.queryForList("SELECT event_type FROM webhook_deliveries WHERE webhook_id=? ORDER BY id", String.class, hook))
                 .containsExactly("permission.updated", "permission.deleted", "role.enabled", "role.deleted", "user.contexts.revoked");
     }

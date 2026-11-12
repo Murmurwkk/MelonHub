@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.melonhub.rbac.dao.Visibility;
 import com.melonhub.rbac.dao.AuthDao;
 import com.melonhub.rbac.dto.Requests;
 import com.melonhub.rbac.exception.ApiException;
@@ -173,7 +174,7 @@ class RbacIntegrationTest {
     }
     @Test void forcedSignOutEndsEveryContextOfTheUser() {
         String one=issue(a1,d1),two=issue(a2,d1);
-        assertThat(r.revokeUserContexts(u1,"test")).isEqualTo(2);
+        assertThat(r.revokeUserContexts(u1,"test",null)).isEqualTo(2);
         assertThatThrownBy(()->c.effective(a1,one)).isInstanceOf(ApiException.class);
         assertThatThrownBy(()->c.effective(a2,two)).isInstanceOf(ApiException.class);
         assertThat(c.effective(a1,issue(a1,d1)).get("permissions")).isEqualTo(List.of("item:read","item:write"));
@@ -211,21 +212,21 @@ class RbacIntegrationTest {
         assertThatThrownBy(()->r.copyDomain(new Requests.DomainCopy(a1,d1,d1),"test")).isInstanceOf(ApiException.class);
     }
     @Test void usersArePagedAndSearchable() {
-        var page=r.users(external,null,null,1,1);
+        var page=r.users(external,null,null,null,1,1);
         assertThat(page.get("total")).isEqualTo(2L);
         assertThat((List<?>)page.get("items")).hasSize(1);
         assertThat(((Map<?,?>)((List<?>)page.get("items")).get(0)).get("departmentIds")).isEqualTo(List.of(d1,d2));
-        assertThat(r.users(external,d2,null,1,20).get("total")).isEqualTo(1L);
-        assertThat(r.users("%",null,null,1,20).get("total")).isEqualTo(0L);
+        assertThat(r.users(external,d2,null,null,1,20).get("total")).isEqualTo(1L);
+        assertThat(r.users("%",null,null,null,1,20).get("total")).isEqualTo(0L);
         var assignments=r.domainAssignments(d1,a1,external,1,20);
         assertThat(assignments.get("total")).isEqualTo(2L);
     }
     @SuppressWarnings("unchecked")
     @Test void auditRecordsDomainIdsAndChangeDetails() {
-        var events=r.events(d1,a1,null,null,"ROLE_PERMISSIONS_UPDATED",null,null,null,1,20);
+        var events=r.events(d1,a1,Visibility.ALL,null,"ROLE_PERMISSIONS_UPDATED",null,null,null,1,20);
         assertThat(events.get("total")).isEqualTo(2L);
         assertThat((List<Map<String,Object>>)events.get("items")).allSatisfy(e->assertThat((String)e.get("detail")).startsWith("新增 item:"));
-        assertThat(r.events(null,null,List.of(a2),null,"ROLE_PERMISSIONS_UPDATED",null,null,null,1,20).get("total")).isEqualTo(1L);
+        assertThat(r.events(null,null,new Visibility(List.of(a2),null),null,"ROLE_PERMISSIONS_UPDATED",null,null,null,1,20).get("total")).isEqualTo(1L);
     }
     @Test void apiKeyIsBoundToApplicationAndCannotAssignForeignRoles() throws Exception {
         mvc.perform(get("/api/v1/departments/"+d1+"/roles").param("applicationId",String.valueOf(a2)).header("X-API-Key",key1)).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(2));

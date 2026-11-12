@@ -21,6 +21,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
@@ -37,8 +38,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 @ContextConfiguration(initializers=CloudTestDatabaseGuard.class)
 class ConcurrencyIntegrationTest {
     private static final String ACTOR = "race-test";
-    private static final AdminPrincipal ROOT = TestAdmins.superAdmin(ACTOR);
     @Autowired AuthService auth;
+    @Value("${melonhub.admin-username}") String bootstrap;
     @Autowired RbacService r;
     @Autowired WebhookService webhooks;
     @Autowired JdbcTemplate db;
@@ -47,7 +48,7 @@ class ConcurrencyIntegrationTest {
     @Test void concurrentLoginsCannotShareOneTotpCode() throws Exception {
         String username = "mfa-race-" + Credentials.token().substring(0, 8);
         String password = "mfa-password-123";
-        auth.createAccount(new Requests.Account(username, "并发登录", "AUDITOR", password, true, null), ROOT);
+        auth.createAccount(new Requests.Account(username, "并发登录", "AUDITOR", password, true, null), auth.principal(bootstrap));
         var pool = Executors.newFixedThreadPool(4);
         try {
             var principal = TestAdmins.self(username, "并发登录", "AUDITOR");

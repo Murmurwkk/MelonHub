@@ -4,6 +4,7 @@ import com.melonhub.rbac.cache.PermissionCache;
 import com.melonhub.rbac.dao.ContextDao;
 import com.melonhub.rbac.dao.GovernanceDao;
 import com.melonhub.rbac.dao.RbacDao;
+import com.melonhub.rbac.dao.Visibility;
 import com.melonhub.rbac.dto.Requests;
 import com.melonhub.rbac.exception.ApiException;
 import com.melonhub.rbac.security.ClientAddress;
@@ -25,6 +26,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -88,7 +90,8 @@ public class RbacService {
     }
 
     // ---- departments ----
-    public List<Map<String,Object>> departments() { return dao.departments(); }
+    /** visible limits the list to those departments; null lists them all. */
+    public List<Map<String,Object>> departments(Collection<Long> visible) { return dao.departments(visible); }
     @Transactional public long department(Requests.Department body, Long id, String actor) {
         if (id == null) {
             id = dao.createDepartment(body.name(), body.code());
@@ -102,7 +105,7 @@ public class RbacService {
     @Transactional public void deleteDepartment(long id, String actor) {
         String[] label = dao.label("departments", id).orElseThrow(() -> ApiException.missing("部门不存在"));
         long[] used = dao.departmentUsage(id);
-        String left = remaining(used[0], "名成员", used[1], "个角色", used[2], "个权限");
+        String left = remaining(used[0], "名成员", used[1], "个角色", used[2], "个权限", used[3], "名限定于该部门的管理员");
         if (!left.isEmpty()) throw ApiException.conflict("部门下还有 " + left + "，请先移除后再删除");
         // Former members' contexts outlive the membership until expiry and would block the delete; none of them can validate any more.
         contexts.clearDepartment(id);
@@ -195,8 +198,9 @@ public class RbacService {
     }
 
     // ---- users ----
-    @Transactional(readOnly=true) public Map<String,Object> users(String keyword, Long department, Boolean enabled, int page, int size) {
-        var result = dao.users(keyword, department, enabled, page, size);
+    @Transactional(readOnly=true) public Map<String,Object> users(String keyword, Long department, Boolean enabled, Collection<Long> visibleDepartments,
+                                                                 int page, int size) {
+        var result = dao.users(keyword, department, enabled, visibleDepartments, page, size);
         attach(result.items(), dao.memberships(ids(result.items())), "user_id", "department_id", "departmentIds");
         return page(result, page, size);
     }
@@ -204,8 +208,16 @@ public class RbacService {
         if (!dao.departmentExists(dept)) throw ApiException.missing("部门不存在");
         return dao.departmentUsers(dept);
     }
-    @Transactional public long user(Requests.User body, Long id, String actor) {
+    @Transactional public long user(Requests.User body, Long id, String actor) { return user(body, id, actor, null); }
+    /**
+     * Creates or changes a user. An operator limited to some departments (scope) only places new users in them;
+     * a user who also belongs to other departments keeps their profile and those memberships, so the operator can
+     * only add or remove memberships within its own departments.
+     */
+    @Transactional public long user(Requests.User body, Long id, String actor, Collection<Long> scope) {
         var departments = new LinkedHashSet<>(body.departmentIds());
+        if (scope != null && id == null && (departments.isEmpty() || !scope.containsAll(departments)))
+            throw ApiException.forbidden("只能在自己管理的部门中创建用户");
         for (long dept : departments) if (!dao.departmentExists(dept)) throw ApiException.missing("部门不存在");
         String email = text(body.email());
         String label = body.name() + " (" + body.externalId() + ")";
@@ -216,6 +228,15 @@ public class RbacService {
             return id;
         }
         String previous = dao.lockUser(id).orElseThrow(() -> ApiException.missing("用户不存在"));
+        if (scope != null) {
+            var current = dao.lockedUserDepartments(id);
+            var outside = current.stream().filter(d -> !scope.contains(d)).collect(Collectors.toSet());
+            var wantedOutside = departments.stream().filter(d -> !scope.contains(d)).collect(Collectors.toSet());
+            if (!outside.equals(wantedOutside)) throw ApiException.forbidden("不能调整自己管理范围以外的部门成员关系");
+            var user = dao.user(id).orElseThrow();
+            boolean profileChanged = !previous.equals(body.externalId()) || !body.name().equals(user.get("name")) || !text(body.email()).equals(user.get("email"));
+            if (!outside.isEmpty() && profileChanged) throw ApiException.forbidden("该用户还属于你管理范围以外的部门，只能调整所管部门内的成员关系");
+        }
         // Business systems identify users by externalId, so changing it must end existing contexts.
         boolean identityChanged = !previous.equals(body.externalId());
         dao.updateUser(id, body.name(), body.externalId(), email, identityChanged);
@@ -231,28 +252,39 @@ public class RbacService {
         audit(actor, "USER_UPDATED", label, null, null, String.join("；", detail));
         return id;
     }
-    @Transactional public void userStatus(long id, boolean enabled, String actor) {
+    @Transactional public void userStatus(long id, boolean enabled, String actor) { userStatus(id, enabled, actor, null); }
+    @Transactional public void userStatus(long id, boolean enabled, String actor, Collection<Long> scope) {
         String external = dao.lockUser(id).orElseThrow(() -> ApiException.missing("用户不存在"));
+        requireOwned(id, scope);
         dao.userStatus(id, enabled);
         cache.touchUser(id);
         webhooks.emitAll(enabled ? "user.enabled" : "user.disabled", Map.of("userId", id, "externalId", external));
         audit(actor, enabled ? "USER_ENABLED" : "USER_DISABLED", external, null, null, enabled ? "" : "原有上下文已失效");
     }
-    @Transactional public void deleteUser(long id, String actor) {
+    @Transactional public void deleteUser(long id, String actor, Collection<Long> scope) {
         String external = dao.lockUser(id).orElseThrow(() -> ApiException.missing("用户不存在"));
+        requireOwned(id, scope);
         int cancelled = governance.cancelPending("user_id", id, "用户已删除");
         dao.deleteUser(id);
         cache.touchUser(id);
         webhooks.emitAll("user.deleted", Map.of("userId", id, "externalId", external));
         audit(actor, "USER_DELETED", external, null, null, cancelled == 0 ? "" : "撤回待审批申请 " + cancelled + " 个");
     }
-    public Map<String,Object> userAccess(long id, Collection<Long> visible) {
+    /** A user an operator limited to some departments (scope) may disable, delete or sign out belongs only to those departments. */
+    private void requireOwned(long user, Collection<Long> scope) {
+        if (scope == null) return;
+        var departments = dao.lockedUserDepartments(user);
+        if (departments.isEmpty() || !scope.containsAll(departments)) throw ApiException.forbidden("只能操作完全属于你所管部门的用户");
+    }
+    public Map<String,Object> userAccess(long id, Visibility visible) {
         var user = dao.user(id).orElseThrow(() -> ApiException.missing("用户不存在"));
-        user.put("departmentIds", dao.userDepartments(id));
+        var memberOf = dao.userDepartments(id);
+        if (visible.departments() != null && memberOf.stream().noneMatch(visible::department)) throw ApiException.forbidden("该用户不在你管理的部门中");
+        user.put("departmentIds", memberOf);
         var domains = new LinkedHashMap<String,Map<String,Object>>();
         for (var row : dao.accessRoles(id)) {
             long app = number(row.get("application_id"));
-            if (visible != null && !visible.contains(app)) continue;
+            if (!visible.application(app) || !visible.department(number(row.get("department_id")))) continue;
             var domain = domains.computeIfAbsent(row.get("department_id") + ":" + app, k -> {
                 var d = new LinkedHashMap<String,Object>();
                 d.put("departmentId", number(row.get("department_id")));
@@ -281,11 +313,12 @@ public class RbacService {
         result.put("user", user);
         result.put("domains", new ArrayList<>(domains.values()));
         result.put("contexts", contexts.activeContexts(id).stream()
-                .filter(c -> visible == null || visible.contains(number(c.get("applicationId")))).toList());
+                .filter(c -> visible.application(number(c.get("applicationId"))) && visible.department(number(c.get("departmentId")))).toList());
         return result;
     }
-    @Transactional public int revokeUserContexts(long id, String actor) {
+    @Transactional public int revokeUserContexts(long id, String actor, Collection<Long> scope) {
         String external = dao.lockUser(id).orElseThrow(() -> ApiException.missing("用户不存在"));
+        requireOwned(id, scope);
         dao.invalidateUser(id);
         int revoked = contexts.revokeUser(id);
         cache.touchUser(id);
@@ -650,7 +683,7 @@ public class RbacService {
     }
 
     // ---- audit and overview ----
-    @Transactional(readOnly=true) public Map<String,Object> events(Long dept, Long app, Collection<Long> visible, String actor, String action, String keyword,
+    @Transactional(readOnly=true) public Map<String,Object> events(Long dept, Long app, Visibility visible, String actor, String action, String keyword,
                                      LocalDate from, LocalDate to, int page, int size) {
         Timestamp start = from == null ? null : Timestamp.from(from.atStartOfDay(ZONE).toInstant());
         Timestamp end = to == null ? null : Timestamp.from(to.plusDays(1).atStartOfDay(ZONE).toInstant());

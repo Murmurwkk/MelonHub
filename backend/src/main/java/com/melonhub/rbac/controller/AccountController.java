@@ -26,7 +26,7 @@ public class AccountController {
     }
 
     @RequiresFunction(ACCOUNT_MANAGE)
-    @GetMapping List<Map<String,Object>> list(HttpServletRequest req) { AdminAccess.of(req); return auth.accounts(); }
+    @GetMapping List<Map<String,Object>> list(HttpServletRequest req) { return auth.accounts(AdminAccess.of(req)); }
     @RequiresFunction(ACCOUNT_MANAGE)
     @PostMapping Map<String,Object> create(@Valid @RequestBody Requests.Account body, HttpServletRequest req) {
         auth.createAccount(body, AdminAccess.of(req));

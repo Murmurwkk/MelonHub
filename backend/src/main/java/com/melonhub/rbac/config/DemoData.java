@@ -20,7 +20,7 @@ public class DemoData implements ApplicationRunner {
     public DemoData(RbacService r, @Value("${melonhub.seed-demo}") boolean enabled) { this.r = r; this.enabled = enabled; }
 
     @Override @Transactional public void run(ApplicationArguments args) {
-        if (!enabled || !r.departments().isEmpty()) return;
+        if (!enabled || !r.departments(null).isEmpty()) return;
         String[][] departments = {{"研发中心","engineering"},{"产品设计部","product"},{"市场运营部","marketing"},{"财务部","finance"},{"人力资源部","hr"},{"客户服务部","support"}};
         var departmentIds = new ArrayList<Long>();
         for (var d : departments) departmentIds.add(r.department(new Requests.Department(d[0], d[1]), null, "system"));

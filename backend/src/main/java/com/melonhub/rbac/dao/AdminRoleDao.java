@@ -33,6 +33,12 @@ public class AdminRoleDao {
         return roles.withFunctions(code).map(role -> new RoleRow(role.getCode(), role.getName(), role.isBuiltin(), Set.copyOf(role.getFunctions())));
     }
     public boolean exists(String code) { return roles.existsById(code); }
+    /** The functions of every role, by role code. */
+    public Map<String,Set<String>> functionsByRole() {
+        var result = new HashMap<String,Set<String>>();
+        for (var role : roles.listed()) result.put(role.getCode(), Set.copyOf(role.getFunctions()));
+        return result;
+    }
     public long accounts(String code) { return roles.accounts(code); }
 
     public List<Map<String,Object>> functions() {

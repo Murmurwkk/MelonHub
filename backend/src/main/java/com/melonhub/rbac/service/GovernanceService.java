@@ -4,6 +4,7 @@ import com.melonhub.rbac.cache.PermissionCache;
 import com.melonhub.rbac.dao.ContextDao;
 import com.melonhub.rbac.dao.GovernanceDao;
 import com.melonhub.rbac.dao.RbacDao;
+import com.melonhub.rbac.dao.Visibility;
 import com.melonhub.rbac.dto.Requests;
 import com.melonhub.rbac.exception.ApiException;
 import java.sql.Timestamp;
@@ -49,7 +50,7 @@ public class GovernanceService {
     }
 
     // ---- access requests ----
-    public Map<String,Object> requests(Long app, Collection<Long> visible, String status, String keyword, int page, int size) {
+    public Map<String,Object> requests(Long app, Visibility visible, String status, String keyword, int page, int size) {
         if (status != null && !status.isBlank() && !List.of("PENDING", "APPROVED", "REJECTED", "CANCELLED").contains(status.strip()))
             throw ApiException.bad("状态只能是 PENDING、APPROVED、REJECTED 或 CANCELLED");
         return RbacService.page(gov.requests(app, visible, status, keyword, page, size), page, size);
@@ -170,7 +171,7 @@ public class GovernanceService {
         return review(id);
     }
     public Map<String,Object> review(long id) { return gov.review(id).orElseThrow(() -> ApiException.missing("复核不存在")); }
-    public List<Map<String,Object>> reviews(Long app, Collection<Long> visible, String status) {
+    public List<Map<String,Object>> reviews(Long app, Visibility visible, String status) {
         if (status != null && !status.isBlank() && !List.of("OPEN", "CLOSED").contains(status.strip())) throw ApiException.bad("状态只能是 OPEN 或 CLOSED");
         return gov.reviews(app, visible, status);
     }
@@ -316,11 +317,13 @@ public class GovernanceService {
     }
 
     // ---- permission manifest ----
-    @Transactional(readOnly=true) public Map<String,Object> exportManifest(long app, Long departmentFilter) {
+    /** visibleDepartments limits an export of every department to the operator's departments; null exports them all. */
+    @Transactional(readOnly=true) public Map<String,Object> exportManifest(long app, Long departmentFilter, Collection<Long> visibleDepartments) {
         var application = dao.applicationRow(app).orElseThrow(() -> ApiException.missing("软件不存在"));
         var departmentsById = new HashMap<Long,Map<String,Object>>();
-        for (var department : rbac.departments()) departmentsById.put(number(department.get("id")), department);
-        List<Long> departmentIds = departmentFilter != null ? List.of(departmentFilter) : dao.manifestDepartmentIds(app);
+        for (var department : rbac.departments(null)) departmentsById.put(number(department.get("id")), department);
+        List<Long> departmentIds = departmentFilter != null ? List.of(departmentFilter) : dao.manifestDepartmentIds(app).stream()
+                .filter(id -> visibleDepartments == null || visibleDepartments.contains(id)).toList();
         var sections = new ArrayList<Map<String,Object>>();
         for (long dept : departmentIds) {
             var department = departmentsById.get(dept);
@@ -370,12 +373,14 @@ public class GovernanceService {
      * Upserts permissions and roles by code inside each listed department; nothing is ever deleted by import.
      * Existing roles whose status or grants change are announced like the same console edits.
      */
-    @Transactional public Map<String,Object> importManifest(long app, Requests.Manifest manifest, String actor) {
+    /** scope: the departments an operator limited to some departments may import into; null allows every department. */
+    @Transactional public Map<String,Object> importManifest(long app, Requests.Manifest manifest, String actor, Collection<Long> scope) {
         if (!dao.applicationExists(app)) throw ApiException.missing("软件不存在");
         var codes = manifest.departments().stream().map(Requests.ManifestDepartment::code).toList();
         var departmentByCode = new HashMap<String,Long>();
         for (var row : dao.departmentIdsByCodes(codes)) departmentByCode.put((String) row.get("code"), number(row.get("id")));
         for (String code : codes) if (!departmentByCode.containsKey(code)) throw ApiException.missing("部门编码不存在: " + code);
+        if (scope != null && !scope.containsAll(departmentByCode.values())) throw ApiException.forbidden("清单中包含你管理范围以外的部门");
         int permissionsCreated = 0, permissionsUpdated = 0, rolesCreated = 0, rolesUpdated = 0;
         for (var section : manifest.departments()) {
             long dept = departmentByCode.get(section.code());
@@ -432,10 +437,11 @@ public class GovernanceService {
     }
 
     // ---- reverse lookup and expiry reports ----
-    public Map<String,Object> permissionHolders(long app, String code, Long department) {
+    /** visibleDepartments limits the holders to those departments; null shows every department. */
+    public Map<String,Object> permissionHolders(long app, String code, Long department, Collection<Long> visibleDepartments) {
         if (!dao.applicationExists(app)) throw ApiException.missing("软件不存在");
         var grouped = new LinkedHashMap<String,Map<String,Object>>();
-        for (var row : dao.permissionHolders(app, code, department, HOLDER_LIMIT)) {
+        for (var row : dao.permissionHolders(app, code, department, visibleDepartments, HOLDER_LIMIT)) {
             var holder = grouped.computeIfAbsent(row.get("userId") + ":" + row.get("departmentId"), k -> {
                 var h = new LinkedHashMap<String,Object>();
                 h.put("userId", number(row.get("userId")));
@@ -456,13 +462,13 @@ public class GovernanceService {
         var result = new LinkedHashMap<String,Object>();
         result.put("code", code);
         result.put("applicationId", app);
-        long total = dao.permissionHolderCount(app, code, department);
+        long total = dao.permissionHolderCount(app, code, department, visibleDepartments);
         result.put("holders", new ArrayList<>(grouped.values()));
         result.put("total", total);
         result.put("truncated", total > grouped.size());
         return result;
     }
-    public List<Map<String,Object>> expiringAssignments(int days, Collection<Long> visible, Long app) {
+    public List<Map<String,Object>> expiringAssignments(int days, Visibility visible, Long app) {
         return dao.expiringAssignments(Timestamp.from(Instant.now().plus(days, ChronoUnit.DAYS)), visible, app);
     }
 

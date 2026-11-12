@@ -4,6 +4,7 @@ import com.melonhub.rbac.cache.PermissionCache;
 import com.melonhub.rbac.dao.AuditDao;
 import com.melonhub.rbac.dao.GovernanceDao;
 import com.melonhub.rbac.dao.RbacDao;
+import com.melonhub.rbac.dao.Visibility;
 import com.melonhub.rbac.dao.WebhookDao;
 import java.lang.management.ManagementFactory;
 import java.sql.Timestamp;
@@ -32,7 +33,7 @@ public class ConsoleService {
         this.dao = dao; this.gov = gov; this.webhooks = webhooks; this.audit = audit; this.cache = cache;
     }
 
-    public Map<String,Object> search(String keyword, Collection<Long> visible) {
+    public Map<String,Object> search(String keyword, Visibility visible) {
         var result = new LinkedHashMap<String,Object>();
         String q = keyword == null ? "" : keyword.strip();
         if (q.isEmpty() || q.length() > 64) {
@@ -43,9 +44,9 @@ public class ConsoleService {
             return result;
         }
         String pattern = RbacDao.like(q);
-        result.put("users", dao.searchUsers(pattern));
-        result.put("departments", dao.searchDepartments(pattern));
-        result.put("applications", dao.searchApplications(pattern, visible));
+        result.put("users", dao.searchUsers(pattern, visible.departments()));
+        result.put("departments", dao.searchDepartments(pattern, visible.departments()));
+        result.put("applications", dao.searchApplications(pattern, visible.applications()));
         result.put("roles", dao.searchRoles(pattern, visible));
         return result;
     }
@@ -54,7 +55,7 @@ public class ConsoleService {
      * Aggregates everything the status page shows; a failing database degrades the board instead of breaking it.
      * The response always has the same keys: what the database could not provide is null.
      */
-    public Map<String,Object> status(Collection<Long> visible) {
+    public Map<String,Object> status(Visibility visible) {
         var result = new LinkedHashMap<String,Object>();
         result.put("version", getClass().getPackage().getImplementationVersion() == null ? "dev" : getClass().getPackage().getImplementationVersion());
         result.put("uptimeSeconds", ManagementFactory.getRuntimeMXBean().getUptime() / 1000);

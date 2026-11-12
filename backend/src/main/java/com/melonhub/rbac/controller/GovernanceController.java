@@ -2,6 +2,7 @@ package com.melonhub.rbac.controller;
 
 import static com.melonhub.rbac.security.AdminFunction.*;
 
+import com.melonhub.rbac.dao.Visibility;
 import com.melonhub.rbac.dto.Requests;
 import com.melonhub.rbac.security.AdminAccess;
 import com.melonhub.rbac.security.AdminPrincipal;
@@ -13,7 +14,6 @@ import com.melonhub.rbac.service.RbacService;
 import com.melonhub.rbac.service.WebhookService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import java.util.Collection;
 import java.util.Map;
 import org.springframework.web.bind.annotation.*;
 
@@ -32,10 +32,13 @@ public class GovernanceController {
         this.g = g; this.console = console; this.webhooks = webhooks; this.auditSeal = auditSeal; this.rbac = rbac;
     }
 
-    private static Collection<Long> visible(AdminPrincipal principal) { return principal.visibleApplications(); }
+    private static Visibility visible(AdminPrincipal principal) { return principal.visibility(); }
     private static int page(int page) { return Math.max(1, page); }
     private static int size(int size) { return Math.min(200, Math.max(1, size)); }
     private static long appOf(Map<String,Object> row) { return ((Number) row.get("applicationId")).longValue(); }
+    /** The record's department; null when it was deleted, which only operators over all departments may then act on. */
+    private static Long deptOf(Map<String,Object> row) { return row.get("departmentId") == null ? null : ((Number) row.get("departmentId")).longValue(); }
+    private static void requireDomain(HttpServletRequest req, Map<String,Object> row) { AdminAccess.domain(req, deptOf(row), appOf(row)); }
     private static Map<String,Object> ok() { return Map.of("ok", true); }
 
     // ---- access requests ----
@@ -50,13 +53,13 @@ public class GovernanceController {
     @RequiresFunction(REQUEST_APPROVE)
     @PostMapping("/access-requests/{id}/approve") Object approve(@PathVariable long id, @Valid @RequestBody Requests.RequestApprove body,
                                                                  HttpServletRequest req) {
-        AdminAccess.application(req, appOf(g.request(id)));
+        requireDomain(req, g.request(id));
         return g.approve(id, body, AdminAccess.of(req).actor());
     }
     @RequiresFunction(REQUEST_APPROVE)
     @PostMapping("/access-requests/{id}/reject") Object reject(@PathVariable long id, @Valid @RequestBody Requests.RequestReject body,
                                                                HttpServletRequest req) {
-        AdminAccess.application(req, appOf(g.request(id)));
+        requireDomain(req, g.request(id));
         return g.reject(id, body, AdminAccess.of(req).actor());
     }
 
@@ -70,31 +73,31 @@ public class GovernanceController {
     }
     @RequiresFunction(REVIEW_MANAGE)
     @PostMapping("/reviews") Object createReview(@Valid @RequestBody Requests.ReviewCreate body, HttpServletRequest req) {
-        return g.createReview(body, AdminAccess.application(req, body.applicationId()).actor());
+        return g.createReview(body, AdminAccess.domain(req, body.departmentId(), body.applicationId()).actor());
     }
     @RequiresFunction(GOVERNANCE_VIEW)
     @GetMapping("/reviews/{id}") Object review(@PathVariable long id, HttpServletRequest req) {
         var review = g.review(id);
-        AdminAccess.application(req, appOf(review));
+        requireDomain(req, review);
         return review;
     }
     @RequiresFunction(GOVERNANCE_VIEW)
     @GetMapping("/reviews/{id}/items") Object reviewItems(@PathVariable long id, @RequestParam(required=false) String decision,
                                                           @RequestParam(defaultValue="1") int page, @RequestParam(defaultValue="20") int size,
                                                           HttpServletRequest req) {
-        AdminAccess.application(req, appOf(g.review(id)));
+        requireDomain(req, g.review(id));
         return g.reviewItems(id, decision, page(page), size(size));
     }
     @RequiresFunction(REVIEW_MANAGE)
     @PutMapping("/reviews/{id}/items/{itemId}") Object decideItem(@PathVariable long id, @PathVariable long itemId,
                                                                   @Valid @RequestBody Requests.ReviewItemDecision body, HttpServletRequest req) {
-        AdminAccess.application(req, appOf(g.review(id)));
+        requireDomain(req, g.review(id));
         g.decideReviewItem(id, itemId, body, AdminAccess.of(req).actor());
         return ok();
     }
     @RequiresFunction(REVIEW_MANAGE)
     @PostMapping("/reviews/{id}/close") Object closeReview(@PathVariable long id, HttpServletRequest req) {
-        AdminAccess.application(req, appOf(g.review(id)));
+        requireDomain(req, g.review(id));
         return g.closeReview(id, AdminAccess.of(req).actor());
     }
 
@@ -138,25 +141,26 @@ public class GovernanceController {
     @RequiresFunction(DOMAIN_VIEW)
     @GetMapping("/manifest") Object exportManifest(@RequestParam long applicationId, @RequestParam(required=false) Long departmentId,
                                                    HttpServletRequest req) {
-        AdminAccess.application(req, applicationId);
-        return g.exportManifest(applicationId, departmentId);
+        var principal = departmentId == null ? AdminAccess.application(req, applicationId) : AdminAccess.domain(req, departmentId, applicationId);
+        return g.exportManifest(applicationId, departmentId, principal.visibleDepartments());
     }
     @RequiresFunction(DOMAIN_TRANSFER)
     @PostMapping("/manifest/import") Object importManifest(@RequestParam long applicationId, @Valid @RequestBody Requests.Manifest body,
                                                            HttpServletRequest req) {
-        return g.importManifest(applicationId, body, AdminAccess.application(req, applicationId).actor());
+        var principal = AdminAccess.application(req, applicationId);
+        return g.importManifest(applicationId, body, principal.actor(), principal.visibleDepartments());
     }
 
     // ---- bulk operations and reports ----
     @RequiresFunction(USER_MANAGE)
     @PostMapping("/users/import") Object importUsers(@Valid @RequestBody Requests.UserImport body, HttpServletRequest req) {
-        return g.importUsers(body, AdminAccess.of(req).actor());
+        return g.importUsers(body, AdminAccess.allDepartments(req).actor());
     }
     @RequiresFunction(DOMAIN_VIEW)
     @GetMapping("/permissions/who") Object permissionHolders(@RequestParam long applicationId, @RequestParam String code,
                                                              @RequestParam(required=false) Long departmentId, HttpServletRequest req) {
-        AdminAccess.application(req, applicationId);
-        return g.permissionHolders(applicationId, code, departmentId);
+        var principal = departmentId == null ? AdminAccess.application(req, applicationId) : AdminAccess.domain(req, departmentId, applicationId);
+        return g.permissionHolders(applicationId, code, departmentId, principal.visibleDepartments());
     }
     @RequiresFunction(DOMAIN_VIEW)
     @GetMapping("/assignments/expiring") Object expiring(@RequestParam(defaultValue="7") int days, @RequestParam(required=false) Long applicationId,

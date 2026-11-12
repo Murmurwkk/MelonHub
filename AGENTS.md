@@ -49,7 +49,7 @@
 | exception | `ApiException`、`ApiErrors`：结构化错误（含 requestId） |
 | config | `CloudDatabaseConfiguration`（保留历史类名）、`RedisConfiguration`、`DemoData` |
 
-迁移：`V1__rbac.sql`、`V2__enterprise.sql`、`V3__governance.sql`（`user_roles` 到期/授予人、`applications.rate_limit`、`access_requests`、`access_reviews`、`access_review_items`、`webhooks`、`webhook_deliveries`、`admin_accounts` MFA 字段、`audit_events.prev_hash/chain_hash`、`audit_seal`）、`V4__audit_seal_order.sql`（`audit_events.seal_seq`，`audit_seal` 的 `last_seq`、`anchor_seq/anchor_hash`）、`V6__admin_functions.sql`（`admin_functions` 功能清单、`admin_roles`、`admin_role_functions`、`admin_accounts.all_applications` 与角色外键），`V5__governance_history.sql`（`admin_accounts/admin_sessions.credential_version`、`user_roles.grant_id`、申请与复核条目的名称快照且外键改为 `ON DELETE SET NULL`、`access_requests.pending_role_id` 唯一索引、复核条目 `grant_id/skipped`、`audit_seal.v2_from_seq`）。已应用的迁移不得修改，结构变更新建 V6。
+迁移：`V1__rbac.sql`、`V2__enterprise.sql`、`V3__governance.sql`（`user_roles` 到期/授予人、`applications.rate_limit`、`access_requests`、`access_reviews`、`access_review_items`、`webhooks`、`webhook_deliveries`、`admin_accounts` MFA 字段、`audit_events.prev_hash/chain_hash`、`audit_seal`）、`V4__audit_seal_order.sql`（`audit_events.seal_seq`，`audit_seal` 的 `last_seq`、`anchor_seq/anchor_hash`）、`V6__admin_functions.sql`（`admin_functions` 功能清单、`admin_roles`、`admin_role_functions`、`admin_accounts.all_applications` 与角色外键），`V7__admin_tree.sql`（`admin_accounts.parent_username/kind/all_departments`、`admin_account_departments`，原非超级管理员账号挂到首个超级管理员之下），`V5__governance_history.sql`（`admin_accounts/admin_sessions.credential_version`、`user_roles.grant_id`、申请与复核条目的名称快照且外键改为 `ON DELETE SET NULL`、`access_requests.pending_role_id` 唯一索引、复核条目 `grant_id/skipped`、`audit_seal.v2_from_seq`）。已应用的迁移不得修改，结构变更新建 V6。
 
 Controller、Service 不直接使用 JdbcTemplate，不把 SQL 搬回服务层。不新增无意义抽象。
 
@@ -84,7 +84,7 @@ MySQL 是唯一数据源，Redis 无持久化。缓存键带随机“代标记�
 
 ### 管理员与凭据
 
-控制台权限按功能配置：16 项功能（`AdminFunction` 枚举，与 `admin_functions` 表一致），每个 `/api/admin` 处理函数用 `@RequiresFunction` 声明所属功能，由 `AdminFunctionGuard` 拦截校验，未声明的接口一律拒绝；管理员角色（`admin_roles`）是一组功能，内置 SUPER_ADMIN / ADMIN / APP_ADMIN / AUDITOR 不可修改且保持原有权限（`AdminFunctionTest` 按旧规则逐接口核对），可在控制台新建自定义角色（只能授予自己拥有的功能）。软件范围属于账号（`all_applications` + `admin_account_applications`），处理函数用 `AdminAccess.application` 校验；列表按可见软件过滤。角色的功能每次请求重新读取，修改即生效。`.env` 的 ADMIN_* 只在账号不存在时创建初始超级管理员；`ADMIN_PASSWORD_RESET=true` 重启一次可恢复，之后改回 false。5 次失败（密码或动态口令）锁 15 分钟，会话 8 小时、空闲 30 分钟；保留至少一个启用的超级管理员。
+控制台权限按功能配置：16 项功能（`AdminFunction` 枚举，与 `admin_functions` 表一致），每个 `/api/admin` 处理函数用 `@RequiresFunction` 声明所属功能，由 `AdminFunctionGuard` 拦截校验，未声明的接口一律拒绝；管理员角色（`admin_roles`）是一组功能，内置 SUPER_ADMIN / ADMIN / APP_ADMIN / AUDITOR 不可修改且保持原有权限（`AdminFunctionTest` 按旧规则逐接口核对），可在控制台新建自定义角色（只能授予自己拥有的功能）。软件范围属于账号（`all_applications` + `admin_account_applications`），处理函数用 `AdminAccess.application` 校验；列表按可见软件过滤。角色的功能每次请求重新读取，修改即生效。管理员按部门分级：账号组成树（`AdminTree`：根管理全部账号，其余管理子树；下级的角色功能、部门与软件范围为上级子集；`DEPARTMENT` 部门管理员是叶子、必须限定部门、不能有账号/角色管理功能）。账号与角色的修改先锁全部账号行（`lockAccounts`），在内存中校验修改后的树，通过后才写入。部门范围经 `Visibility`（软件、部门，null 表示不限）传入列表查询，授权域接口用 `AdminAccess.domain` 同时校验部门与软件；平台级功能（`AdminFunction.platformWide`）与用户批量导入要求全部部门。`.env` 的 ADMIN_* 只在账号不存在时创建初始超级管理员；`ADMIN_PASSWORD_RESET=true` 重启一次可恢复，之后改回 false。5 次失败（密码或动态口令）锁 15 分钟，会话 8 小时、空闲 30 分钟；保留至少一个启用的超级管理员。
 
 两步验证：`Totp` RFC 6238（SHA1、30 秒、6 位，容忍 ±1 步）；setup 生成待绑定密钥，confirm 后生效；登录记录 `mfa_last_step`，同一步不能复用（停用两步验证同样检查）；错误码 `MFA_REQUIRED`/`MFA_INVALID`；停用需密码 + 口令；超级管理员 `POST /api/admin/accounts/{username}/mfa/reset`。
 

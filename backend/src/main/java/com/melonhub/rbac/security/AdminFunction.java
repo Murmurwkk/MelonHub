@@ -8,14 +8,16 @@ import java.util.stream.Collectors;
 /**
  * Console functions. Each console endpoint declares the function it belongs to with {@link RequiresFunction}, and an
  * administrator role is a set of functions. Kept identical to the admin_functions table (V6), which the role
- * configuration references; AdminFunctionCatalogTest checks both agree.
+ * configuration references; AdminFunctionTest checks both agree. Platform-wide functions change things shared by
+ * every department (departments, applications and their credentials, administrator roles), so only accounts that
+ * manage all departments can use them.
  */
 public enum AdminFunction {
     ORG_VIEW("org.view"),
-    DEPARTMENT_MANAGE("department.manage"),
+    DEPARTMENT_MANAGE("department.manage", true),
     USER_MANAGE("user.manage"),
-    APPLICATION_MANAGE("application.manage"),
-    APPLICATION_CREDENTIALS("application.credentials"),
+    APPLICATION_MANAGE("application.manage", true),
+    APPLICATION_CREDENTIALS("application.credentials", true),
     DOMAIN_VIEW("domain.view"),
     DOMAIN_CONFIGURE("domain.configure"),
     DOMAIN_ASSIGN("domain.assign"),
@@ -26,13 +28,16 @@ public enum AdminFunction {
     AUDIT_VIEW("audit.view"),
     SYSTEM_VIEW("system.view"),
     ACCOUNT_MANAGE("account.manage"),
-    ROLE_MANAGE("role.manage");
+    ROLE_MANAGE("role.manage", true);
 
     private static final Map<String,AdminFunction> BY_CODE = Arrays.stream(values()).collect(Collectors.toMap(AdminFunction::code, Function.identity()));
     private final String code;
-    AdminFunction(String code) { this.code = code; }
+    private final boolean platformWide;
+    AdminFunction(String code) { this(code, false); }
+    AdminFunction(String code, boolean platformWide) { this.code = code; this.platformWide = platformWide; }
 
     public String code() { return code; }
+    public boolean platformWide() { return platformWide; }
     /** The function with this code, or null for a code this version does not know. */
     public static AdminFunction of(String code) { return BY_CODE.get(code); }
 }

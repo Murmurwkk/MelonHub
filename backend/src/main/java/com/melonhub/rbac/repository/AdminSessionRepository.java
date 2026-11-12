@@ -17,6 +17,9 @@ public interface AdminSessionRepository extends JpaRepository<AdminSession, Stri
         String getRole();
         Instant getLastSeenAt();
         boolean isAllApplications();
+        String getKind();
+        boolean isRoot();
+        boolean isAllDepartments();
     }
     interface SessionCount {
         String getUsername();
@@ -26,7 +29,8 @@ public interface AdminSessionRepository extends JpaRepository<AdminSession, Stri
     /** A session is usable while unexpired, recently used, created under the current credentials and the account is enabled. */
     @Query("""
             select a.username as username, a.displayName as displayName, a.role.code as role, s.lastSeenAt as lastSeenAt,
-                   a.allApplications as allApplications
+                   a.allApplications as allApplications, a.kind as kind, case when a.parent is null then true else false end as root,
+                   a.allDepartments as allDepartments
             from AdminSession s join s.account a
             where s.tokenHash = :hash and s.credentialVersion = a.credentialVersion and a.enabled = true
               and s.expiresAt > :now and s.lastSeenAt > :idleSince""")

@@ -27,6 +27,7 @@ import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
@@ -56,6 +57,7 @@ class ApiContractTest {
     private static final JsonNodeFactory NODES = JsonNodeFactory.instance;
 
     @Autowired MockMvc mvc;
+    @Value("${melonhub.admin-username}") String bootstrap;
     @Autowired ObjectMapper mapper;
     @Autowired RbacService r;
     @Autowired AuthService auth;
@@ -70,7 +72,7 @@ class ApiContractTest {
         long d2 = r.department(new Requests.Department("Contract Two " + s, code2), null, "contract");
 
         auth.createAccount(new Requests.Account(operator, null, AdminPrincipal.SUPER_ADMIN, PASSWORD, true, null),
-                TestAdmins.superAdmin("contract-root"));
+                auth.principal(bootstrap));
         JsonNode login = record("POST /api/auth/login", post("/api/auth/login"), Map.of("username", operator, "password", PASSWORD), false);
         bearer = "Bearer " + login.get("token").asText();
         record("GET /api/auth/me", get("/api/auth/me"));

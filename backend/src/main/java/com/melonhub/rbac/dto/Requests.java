@@ -17,22 +17,29 @@ public final class Requests {
     }
     public record PasswordChange(@NotBlank @Size(max=100) String currentPassword, @NotBlank @Size(min=12,max=100) String newPassword) {}
     public record PasswordReset(@NotBlank @Size(min=12,max=100) String password) {}
+    public static final String ADMIN_KIND = "MANAGER|DEPARTMENT";
     /**
      * allApplications false limits the account to applicationIds; when it is omitted, giving applicationIds limits the
-     * account to them and leaving them out allows every application.
+     * account to them and leaving them out allows every application. Departments work the same way. parentUsername
+     * defaults to the creating operator; kind defaults to MANAGER.
      */
     public record Account(@NotBlank @Pattern(regexp=USERNAME) String username, @Size(max=100) String displayName,
                           @NotBlank @Pattern(regexp=ADMIN_ROLE_CODE) String role,
                           @NotBlank @Size(min=12,max=100) String password, Boolean enabled,
-                          @Size(max=200) List<@NotNull @Positive Long> applicationIds, Boolean allApplications) {
+                          @Size(max=200) List<@NotNull @Positive Long> applicationIds, Boolean allApplications,
+                          @Pattern(regexp=USERNAME) String parentUsername, @Pattern(regexp=ADMIN_KIND) String kind,
+                          Boolean allDepartments, @Size(max=200) List<@NotNull @Positive Long> departmentIds) {
         public Account(String username, String displayName, String role, String password, Boolean enabled, List<Long> applicationIds) {
-            this(username, displayName, role, password, enabled, applicationIds, null);
+            this(username, displayName, role, password, enabled, applicationIds, null, null, null, null, null);
         }
     }
+    /** Omitted scopes, kind and parent keep their current values. */
     public record AccountUpdate(@Size(max=100) String displayName, @NotBlank @Pattern(regexp=ADMIN_ROLE_CODE) String role,
-                                @NotNull Boolean enabled, @Size(max=200) List<@NotNull @Positive Long> applicationIds, Boolean allApplications) {
+                                @NotNull Boolean enabled, @Size(max=200) List<@NotNull @Positive Long> applicationIds, Boolean allApplications,
+                                @Pattern(regexp=USERNAME) String parentUsername, @Pattern(regexp=ADMIN_KIND) String kind,
+                                Boolean allDepartments, @Size(max=200) List<@NotNull @Positive Long> departmentIds) {
         public AccountUpdate(String displayName, String role, Boolean enabled, List<Long> applicationIds) {
-            this(displayName, role, enabled, applicationIds, null);
+            this(displayName, role, enabled, applicationIds, null, null, null, null, null);
         }
     }
     public record AdminRoleCreate(@NotBlank @Pattern(regexp=ADMIN_ROLE_CODE) String code, @NotBlank @Size(max=100) String name,

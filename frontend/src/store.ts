@@ -5,6 +5,8 @@ import { functionLabels } from './labels'
 import type { AdminFunctionCode, Application, Department, Health, Principal } from './types'
 
 const DEPARTMENT = 'melonhub-department', APPLICATION = 'melonhub-application'
+/** Functions that change what every department shares; only accounts over all departments can use them (see AdminFunction). */
+const PLATFORM_WIDE = new Set<AdminFunctionCode>(['department.manage', 'application.manage', 'application.credentials', 'role.manage'])
 
 export const useHub = defineStore('hub', () => {
   const me = ref<Principal | null>(null)
@@ -22,19 +24,26 @@ export const useHub = defineStore('hub', () => {
   const domainQuery = computed(() => ({ departmentId: departmentId.value, applicationId: applicationId.value }))
 
   const functions = computed(() => new Set(me.value?.functions ?? []))
-  /** Whether the signed-in role grants the function, and, when an application is given, may use it there. */
-  function can(fn: AdminFunctionCode, application?: number) {
-    if (!functions.value.has(fn)) return false
-    return application === undefined || !!me.value?.allApplications || !!me.value?.applicationIds.includes(application)
-  }
-  /** Why the operator may not use the function (in that application), or '' when it may. */
-  function denial(fn: AdminFunctionCode, application?: number) {
+  const inApplication = (id?: number) => id === undefined || !!me.value?.allApplications || !!me.value?.applicationIds.includes(id)
+  /** null is a record whose department was deleted: only operators over all departments may act on it. */
+  const inDepartment = (id?: number | null) => id === undefined || !!me.value?.allDepartments || (id !== null && !!me.value?.departmentIds.includes(id))
+  /** Why the operator may not use the function (in that application and department), or '' when it may. */
+  function denial(fn: AdminFunctionCode, application?: number, department?: number | null) {
     if (!functions.value.has(fn)) return `当前角色没有“${functionLabels[fn]}”功能`
-    return can(fn, application) ? '' : '当前账号不能管理该软件'
+    if (PLATFORM_WIDE.has(fn) && !me.value?.allDepartments) return `“${functionLabels[fn]}”只对可管理全部部门的管理员开放`
+    if (!inApplication(application)) return '当前账号不能管理该软件'
+    if (!inDepartment(department)) return '当前账号不能管理该部门'
+    return ''
   }
-  const canConfigure = computed(() => hasDomain.value && can('domain.configure', applicationId.value))
-  const canAssign = computed(() => hasDomain.value && can('domain.assign', applicationId.value))
-  const canTransfer = computed(() => hasDomain.value && can('domain.transfer', applicationId.value))
+  /** Whether the signed-in role grants the function and the account may use it in that application and department. */
+  function can(fn: AdminFunctionCode, application?: number, department?: number | null) { return !!me.value && !denial(fn, application, department) }
+  /** Disabling, deleting or signing out a user needs a user that belongs only to the operator's departments. */
+  function canManageUser(departments: number[]) {
+    return can('user.manage') && (!!me.value?.allDepartments || (departments.length > 0 && departments.every(d => inDepartment(d))))
+  }
+  const canConfigure = computed(() => hasDomain.value && can('domain.configure', applicationId.value, departmentId.value))
+  const canAssign = computed(() => hasDomain.value && can('domain.assign', applicationId.value, departmentId.value))
+  const canTransfer = computed(() => hasDomain.value && can('domain.transfer', applicationId.value, departmentId.value))
 
   const departmentName = (id: number | null | undefined) => id ? departments.value.find(d => d.id === id)?.name ?? `部门 #${id}` : '—'
   const applicationName = (id: number | null | undefined) => id ? applications.value.find(a => a.id === id)?.name ?? `软件 #${id}` : '—'
@@ -77,7 +86,7 @@ export const useHub = defineStore('hub', () => {
 
   return {
     me, departments, applications, departmentId, applicationId, health, department, application, hasDomain, domainKey, domainQuery,
-    can, denial, canConfigure, canAssign, canTransfer, departmentName, applicationName, departmentOptions, applicationOptions,
+    can, denial, canManageUser, canConfigure, canAssign, canTransfer, departmentName, applicationName, departmentOptions, applicationOptions,
     setDomain, loadLists, refreshHealth, signIn, signOut,
   }
 })

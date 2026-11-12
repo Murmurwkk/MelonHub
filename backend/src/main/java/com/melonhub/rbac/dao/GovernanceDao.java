@@ -81,10 +81,11 @@ public class GovernanceDao {
     public Optional<Map<String,Object>> request(long id) {
         return db.queryForList(REQUEST_SELECT + REQUEST_FROM + " WHERE r.id=?", id).stream().findFirst();
     }
-    public RbacDao.Page requests(Long app, Collection<Long> visible, String status, String keyword, int page, int size) {
+    public RbacDao.Page requests(Long app, Visibility visible, String status, String keyword, int page, int size) {
         var where = new Where();
         if (app != null) where.and("r.application_id=?", app);
-        if (visible != null) where.in("r.application_id", visible);
+        if (visible.applications() != null) where.in("r.application_id", visible.applications());
+        if (visible.departments() != null) where.in("r.department_id", visible.departments());
         if (status != null && !status.isBlank()) where.and("r.status=?", status.strip());
         if (keyword != null && !keyword.isBlank()) {
             String pattern = RbacDao.like(keyword.strip());
@@ -105,10 +106,11 @@ public class GovernanceDao {
         return db.update("UPDATE access_requests SET status='CANCELLED',pending_role_id=NULL,decided_at=CURRENT_TIMESTAMP "
                 + "WHERE id=? AND user_id=? AND status='PENDING'", id, user);
     }
-    public long pendingCount(Collection<Long> visible) {
-        if (visible == null) return count("SELECT COUNT(*) FROM access_requests WHERE status='PENDING'");
-        if (visible.isEmpty()) return 0;
-        return count("SELECT COUNT(*) FROM access_requests WHERE status='PENDING' AND application_id IN (" + AuthDao.placeholders(visible.size()) + ")", visible.toArray());
+    public long pendingCount(Visibility visible) {
+        var where = new Where().and("status='PENDING'");
+        if (visible.applications() != null) where.in("application_id", visible.applications());
+        if (visible.departments() != null) where.in("department_id", visible.departments());
+        return count("SELECT COUNT(*) FROM access_requests" + where.sql, where.args.toArray());
     }
 
     // ---- access reviews ----
@@ -130,10 +132,12 @@ public class GovernanceDao {
                 + "FROM access_reviews v JOIN applications a ON a.id=v.application_id LEFT JOIN departments d ON d.id=v.department_id WHERE v.id=?", id)
                 .stream().findFirst();
     }
-    public List<Map<String,Object>> reviews(Long app, Collection<Long> visible, String status) {
+    /** A review over every department of an application (no department) is only visible to unlimited operators. */
+    public List<Map<String,Object>> reviews(Long app, Visibility visible, String status) {
         var where = new Where();
         if (app != null) where.and("v.application_id=?", app);
-        if (visible != null) where.in("v.application_id", visible);
+        if (visible.applications() != null) where.in("v.application_id", visible.applications());
+        if (visible.departments() != null) where.in("v.department_id", visible.departments());
         if (status != null && !status.isBlank()) where.and("v.status=?", status.strip());
         return db.queryForList("SELECT v.id,v.name,v.application_id AS applicationId,a.name AS applicationName,v.department_id AS departmentId,"
                 + REVIEW_DEPARTMENT + ",v.status,v.due_at AS dueAt,v.created_by AS createdBy,v.created_at AS createdAt,"
@@ -192,9 +196,10 @@ public class GovernanceDao {
         return db.update("UPDATE access_reviews SET status='CLOSED',closed_by=?,closed_at=CURRENT_TIMESTAMP,summary=? WHERE id=? AND status='OPEN'",
                 by, summary, review);
     }
-    public long openReviewCount(Collection<Long> visible) {
-        if (visible == null) return count("SELECT COUNT(*) FROM access_reviews WHERE status='OPEN'");
-        if (visible.isEmpty()) return 0;
-        return count("SELECT COUNT(*) FROM access_reviews WHERE status='OPEN' AND application_id IN (" + AuthDao.placeholders(visible.size()) + ")", visible.toArray());
+    public long openReviewCount(Visibility visible) {
+        var where = new Where().and("status='OPEN'");
+        if (visible.applications() != null) where.in("application_id", visible.applications());
+        if (visible.departments() != null) where.in("department_id", visible.departments());
+        return count("SELECT COUNT(*) FROM access_reviews" + where.sql, where.args.toArray());
     }
 }

@@ -33,6 +33,16 @@ public class AdminAccount {
     private String mfaPendingSecret;
     private long mfaLastStep;
     private long credentialVersion;
+    /** The account that manages this one; null for a root of the administrator tree. */
+    @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "parent_username") private AdminAccount parent;
+    /** MANAGER may have accounts below it; DEPARTMENT is a leaf limited to its departments. */
+    private String kind;
+    /** False when the account may only manage the departments listed in departmentIds. */
+    private boolean allDepartments;
+    @ElementCollection
+    @CollectionTable(name = "admin_account_departments", joinColumns = @JoinColumn(name = "username"))
+    @Column(name = "department_id")
+    private Set<Long> departmentIds = new HashSet<>();
     /** False when the account may only manage the applications listed in applicationIds. */
     private boolean allApplications;
     /** Applications the account may manage when allApplications is false. */
@@ -42,13 +52,16 @@ public class AdminAccount {
     private Set<Long> applicationIds = new HashSet<>();
 
     protected AdminAccount() {}
-    public AdminAccount(String username, String displayName, AdminRole role, String passwordHash, boolean enabled, boolean allApplications,
-                        Instant passwordChangedAt) {
+    public AdminAccount(String username, String displayName, AdminRole role, String passwordHash, boolean enabled, AdminAccount parent,
+                        String kind, boolean allDepartments, boolean allApplications, Instant passwordChangedAt) {
         this.username = username;
         this.displayName = displayName;
         this.role = role;
         this.passwordHash = passwordHash;
         this.enabled = enabled;
+        this.parent = parent;
+        this.kind = kind;
+        this.allDepartments = allDepartments;
         this.allApplications = allApplications;
         this.passwordChangedAt = passwordChangedAt;
     }
@@ -68,5 +81,9 @@ public class AdminAccount {
     public String getMfaSecret() { return mfaSecret; }
     public long getCredentialVersion() { return credentialVersion; }
     public boolean isAllApplications() { return allApplications; }
+    public AdminAccount getParent() { return parent; }
+    public String getKind() { return kind; }
+    public boolean isAllDepartments() { return allDepartments; }
+    public Set<Long> getDepartmentIds() { return departmentIds; }
     public Set<Long> getApplicationIds() { return applicationIds; }
 }

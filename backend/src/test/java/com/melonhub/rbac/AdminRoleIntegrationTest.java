@@ -14,6 +14,7 @@ import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
@@ -33,19 +34,22 @@ import org.springframework.transaction.annotation.Transactional;
 class AdminRoleIntegrationTest {
     private static final String PASSWORD = "Role-Test-Passw0rd";
     @Autowired MockMvc mvc;
+    @Value("${melonhub.admin-username}") String bootstrap;
     @Autowired ObjectMapper mapper;
     @Autowired AuthService auth;
     @Autowired RbacService r;
-    String suffix, root;
+    /** root is the signed-in super administrator; accounts this test creates are placed below it, so it manages them. */
+    String suffix, root, rootUser;
 
     @BeforeEach void fixture() throws Exception {
         suffix = Credentials.token().substring(0, 8).toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "X");
-        root = login(account("root", "SUPER_ADMIN", null));
+        rootUser = account("root", "SUPER_ADMIN", null);
+        root = login(rootUser);
     }
 
     private String account(String name, String role, List<Long> applications) {
         String username = name.toLowerCase(Locale.ROOT) + "-" + suffix.toLowerCase(Locale.ROOT);
-        auth.createAccount(new Requests.Account(username, null, role, PASSWORD, true, applications), TestAdmins.superAdmin("role-test"));
+        auth.createAccount(new Requests.Account(username, null, role, PASSWORD, true, applications), auth.principal(rootUser == null ? bootstrap : rootUser));
         return username;
     }
     private String login(String username) throws Exception {

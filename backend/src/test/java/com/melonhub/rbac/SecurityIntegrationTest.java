@@ -41,7 +41,8 @@ import org.springframework.transaction.annotation.Transactional;
 @ContextConfiguration(initializers=CloudTestDatabaseGuard.class)
 class SecurityIntegrationTest {
     private static final String PASSWORD = "Test-Only-Passw0rd";
-    private static final AdminPrincipal ROOT = TestAdmins.superAdmin("security-test-root");
+    /** A root of the administrator tree that manages every account but, being disabled, is not counted as an enabled super administrator. */
+    AdminPrincipal ROOT;
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper mapper;
     @Autowired RbacService r;
@@ -54,6 +55,9 @@ class SecurityIntegrationTest {
 
     @BeforeEach void fixture() {
         suffix = Credentials.token().substring(0, 10);
+        String root = "security-root-" + suffix;
+        db.update("INSERT INTO admin_accounts(username,display_name,role,password_hash,enabled) VALUES (?,'root','SUPER_ADMIN','-',FALSE)", root);
+        ROOT = TestAdmins.superAdmin(root);
         d1 = r.department(new Requests.Department("Security", "sec-" + suffix), null, "test");
         a1 = ((Number) r.application(new Requests.Application("SecOne", "s1-" + suffix, ""), "test").get("id")).longValue();
         a2 = ((Number) r.application(new Requests.Application("SecTwo", "s2-" + suffix, ""), "test").get("id")).longValue();

@@ -25,7 +25,7 @@ public class BusinessController {
     private static String actor(HttpServletRequest q) { return ApplicationCaller.of(q).actor(); }
     private static Map<String,Object> ok() { return Map.of("ok", true); }
 
-    @GetMapping("/departments") Object departments(HttpServletRequest q) { app(q); return r.departments(); }
+    @GetMapping("/departments") Object departments(HttpServletRequest q) { app(q); return r.departments(null); }
     @GetMapping("/departments/{dept}/users") Object users(@PathVariable long dept, HttpServletRequest q) { app(q); return r.departmentUsers(dept); }
     @GetMapping("/departments/{dept}/roles") Object roles(@PathVariable long dept, HttpServletRequest q) { return r.roles(dept, app(q)); }
     @PostMapping("/departments/{dept}/roles") Object role(@PathVariable long dept, @Valid @RequestBody Requests.Role b, HttpServletRequest q) {

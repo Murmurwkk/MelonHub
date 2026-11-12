@@ -7,6 +7,7 @@ import com.melonhub.rbac.repository.AdminAccountRepository;
 import com.melonhub.rbac.repository.AdminSessionRepository;
 import com.melonhub.rbac.repository.ApplicationKeyRepository;
 import com.melonhub.rbac.repository.ApplicationRepository;
+import com.melonhub.rbac.repository.DepartmentRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.persistence.LockModeType;
@@ -21,6 +22,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
 import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,8 +37,13 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 public class AuthDao {
     public record AccountRow(String username, String displayName, String role, boolean enabled, String passwordHash, boolean locked,
-                             String mfaSecret, long mfaLastStep, long credentialVersion, boolean allApplications) {}
-    public record SessionRow(String username, String displayName, String role, boolean allApplications, boolean stale) {}
+                             String mfaSecret, long mfaLastStep, long credentialVersion, boolean allApplications,
+                             String kind, boolean root, boolean allDepartments) {}
+    public record SessionRow(String username, String displayName, String role, boolean allApplications, String kind, boolean root,
+                             boolean allDepartments, boolean stale) {}
+    /** One account's place in the administrator tree: its parent (null for a root), kind, role and scopes. */
+    public record AccountNode(String username, String parent, String kind, String role, boolean enabled, boolean allDepartments,
+                              Set<Long> departments, boolean allApplications, Set<Long> applications) {}
     public record KeyRow(long keyId, long applicationId, boolean valid, Instant expiresAt) {}
 
     private static final int PURGE_BATCH = 1000;
@@ -44,11 +52,13 @@ public class AuthDao {
     private final AdminSessionRepository sessions;
     private final ApplicationRepository applications;
     private final ApplicationKeyRepository keys;
+    private final DepartmentRepository departments;
     private final EntityManager em;
 
     public AuthDao(AdminAccountRepository accounts, AdminSessionRepository sessions, ApplicationRepository applications,
-                   ApplicationKeyRepository keys, EntityManager em) {
-        this.accounts = accounts; this.sessions = sessions; this.applications = applications; this.keys = keys; this.em = em;
+                   ApplicationKeyRepository keys, DepartmentRepository departments, EntityManager em) {
+        this.accounts = accounts; this.sessions = sessions; this.applications = applications; this.keys = keys;
+        this.departments = departments; this.em = em;
     }
 
     /** TIMESTAMP columns hold whole seconds and MySQL rounds fractions, so stored times are truncated first. */
@@ -64,12 +74,14 @@ public class AuthDao {
     }
 
     public boolean accountExists(String username) { return accounts.existsById(username); }
-    public void createAccount(String username, String displayName, String role, String hash, boolean enabled, boolean allApplications) {
+    public void createAccount(String username, String displayName, String role, String hash, boolean enabled, String parent, String kind,
+                              boolean allDepartments, boolean allApplications) {
         // persist, not save(): with an assigned key save() merges into an existing account instead of failing as a duplicate.
-        em.persist(new AdminAccount(username, displayName, em.getReference(AdminRole.class, role), hash, enabled, allApplications, now()));
+        em.persist(new AdminAccount(username, displayName, em.getReference(AdminRole.class, role), hash, enabled,
+                parent == null ? null : em.getReference(AdminAccount.class, parent), kind, allDepartments, allApplications, now()));
         em.flush();
     }
-    /** Restores the bootstrap account as an enabled super administrator over all applications. */
+    /** Restores the bootstrap account as an enabled super administrator at a root of the tree, over everything. */
     public void resetBootstrap(String username, String hash, String superAdminRole) {
         accounts.resetBootstrap(username, hash, em.getReference(AdminRole.class, superAdminRole), now());
     }
@@ -77,7 +89,7 @@ public class AuthDao {
         Instant now = Instant.now();
         return accounts.credentials(username).map(a -> new AccountRow(a.getUsername(), a.getDisplayName(), a.getRole(), a.isEnabled(),
                 a.getPasswordHash(), a.getLockedUntil() != null && a.getLockedUntil().isAfter(now), a.getMfaSecret(), a.getMfaLastStep(),
-                a.getCredentialVersion(), a.isAllApplications()));
+                a.getCredentialVersion(), a.isAllApplications(), a.getKind(), a.isRoot(), a.isAllDepartments()));
     }
     /** Counts a failed password and returns whether the account is now locked. */
     public boolean recordFailure(String username, int maxFailures, int lockMinutes) {
@@ -113,10 +125,12 @@ public class AuthDao {
     public Optional<SessionRow> session(String hash, int idleMinutes) {
         Instant now = Instant.now();
         return sessions.active(hash, now, now.minus(idleMinutes, ChronoUnit.MINUTES)).map(s ->
-                new SessionRow(s.getUsername(), s.getDisplayName(), s.getRole(), s.isAllApplications(), s.getLastSeenAt().isBefore(now.minusSeconds(60))));
+                new SessionRow(s.getUsername(), s.getDisplayName(), s.getRole(), s.isAllApplications(), s.getKind(), s.isRoot(),
+                        s.isAllDepartments(), s.getLastSeenAt().isBefore(now.minusSeconds(60))));
     }
     public void touchSession(String hash) { sessions.touch(hash, now()); }
     public List<Long> accountApplications(String username) { return accounts.applicationIds(username); }
+    public List<Long> accountDepartments(String username) { return accounts.departmentIds(username); }
     public void logout(String hash) { sessions.deleteByHashes(List.of(hash)); }
     /** Ends every session, including one a concurrent login is about to create with the old credentials. */
     public void endSessions(String username) {
@@ -162,6 +176,9 @@ public class AuthDao {
             row.put("activeSessions", sessionCounts.getOrDefault(account.getUsername(), 0L));
             row.put("mfaEnabled", account.getMfaSecret() != null ? 1L : 0L);
             row.put("allApplications", account.isAllApplications());
+            row.put("parentUsername", account.getParent() == null ? null : account.getParent().getUsername());
+            row.put("kind", account.getKind());
+            row.put("allDepartments", account.isAllDepartments());
             rows.add(row);
         }
         return rows;
@@ -170,8 +187,21 @@ public class AuthDao {
         return accounts.applicationPairs().stream()
                 .map(pair -> Map.<String,Object>of("username", pair.getUsername(), "application_id", pair.getApplicationId())).toList();
     }
-    public int updateAccount(String username, String displayName, String role, boolean enabled, boolean allApplications) {
-        return accounts.update(username, displayName, em.getReference(AdminRole.class, role), enabled, allApplications);
+    public List<Map<String,Object>> accountDepartmentPairs() {
+        return accounts.departmentPairs().stream()
+                .map(pair -> Map.<String,Object>of("username", pair.getUsername(), "department_id", pair.getDepartmentId())).toList();
+    }
+    public int updateAccount(String username, String displayName, String role, boolean enabled, String kind, boolean allDepartments,
+                             boolean allApplications) {
+        return accounts.update(username, displayName, em.getReference(AdminRole.class, role), enabled, kind, allDepartments, allApplications);
+    }
+    public void moveUnder(String username, String parent) { accounts.moveUnder(username, em.getReference(AdminAccount.class, parent)); }
+    public void replaceAccountDepartments(String username, Collection<Long> departmentIds) {
+        AdminAccount account = em.find(AdminAccount.class, username);
+        if (account == null) return;
+        account.getDepartmentIds().clear();
+        account.getDepartmentIds().addAll(departmentIds);
+        em.flush();
     }
     public void replaceAccountApplications(String username, Collection<Long> applicationIds) {
         AdminAccount account = em.find(AdminAccount.class, username);
@@ -194,11 +224,20 @@ public class AuthDao {
     public int consumeMfaStep(String username, String secret, long step) { return accounts.consumeMfaStep(username, secret, step); }
     public int disableMfaWithStep(String username, String secret, long step) { return accounts.disableMfaWithStep(username, secret, step); }
 
-    /** Serializes changes that could remove the last enabled super administrator. */
-    public List<String> lockEnabledSuperAdmins() {
-        return accounts.lockEnabledSuperAdmins().stream().map(AdminAccount::getUsername).toList();
+    /** Locks every account row; changes to the administrator tree take this before reading it. */
+    public void lockAccounts() { accounts.lockAll(); }
+    /** The whole administrator tree as it is now in this transaction. */
+    public List<AccountNode> nodes() {
+        var departments = new HashMap<String,Set<Long>>();
+        for (var pair : accounts.departmentPairs()) departments.computeIfAbsent(pair.getUsername(), k -> new TreeSet<>()).add(pair.getDepartmentId());
+        var applications = new HashMap<String,Set<Long>>();
+        for (var pair : accounts.applicationPairs()) applications.computeIfAbsent(pair.getUsername(), k -> new TreeSet<>()).add(pair.getApplicationId());
+        return accounts.nodes().stream().map(n -> new AccountNode(n.getUsername(), n.getParent(), n.getKind(), n.getRole(), n.isEnabled(),
+                n.isAllDepartments(), departments.getOrDefault(n.getUsername(), Set.of()), n.isAllApplications(),
+                applications.getOrDefault(n.getUsername(), Set.of()))).toList();
     }
     public long existingApplications(Collection<Long> ids) { return ids.isEmpty() ? 0 : applications.countByIdIn(ids); }
+    public long existingDepartments(Collection<Long> ids) { return ids.isEmpty() ? 0 : departments.countByIdIn(ids); }
 
     public Optional<KeyRow> applicationKey(String hash) {
         Instant now = Instant.now();

@@ -31,7 +31,12 @@ const columns: TableColumnsType<AccessReview> = [
 
 const createOpen = ref(false), saving = ref(false), formRef = ref<FormInstance>()
 const form = reactive<{ name: string; applicationId?: number; departmentId?: number; dueDays: number | null }>({ name: '', dueDays: null })
-const rules = { name: [{ required: true, whitespace: true, max: 100, message: '请输入复核名称（最多 100 字）' }], applicationId: [{ required: true, message: '请选择软件' }] }
+// An administrator limited to some departments reviews one of them at a time; reviews over every department need all departments.
+const rules = computed(() => ({
+  name: [{ required: true, whitespace: true, max: 100, message: '请输入复核名称（最多 100 字）' }],
+  applicationId: [{ required: true, message: '请选择软件' }],
+  departmentId: hub.me?.allDepartments ? [] : [{ required: true, message: '请选择要复核的部门' }],
+}))
 function create() {
   Object.assign(form, { name: '', applicationId: hub.applicationId || undefined, departmentId: undefined, dueDays: null })
   createOpen.value = true
@@ -79,7 +84,7 @@ const createableApps = computed(() => hub.applicationOptions.filter(o => hub.can
             <div class="cell-main">{{ record.createdBy }}</div>
             <div class="cell-sub">{{ fmt(record.createdAt) }}</div>
           </template>
-          <template v-else-if="column.key === 'actions'"><a @click="detail(record)">{{ record.status === 'OPEN' && hub.can('review.manage', record.applicationId) ? '处理' : '明细' }}</a></template>
+          <template v-else-if="column.key === 'actions'"><a @click="detail(record)">{{ record.status === 'OPEN' && hub.can('review.manage', record.applicationId, record.departmentId) ? '处理' : '明细' }}</a></template>
         </template>
         <template #emptyText><a-empty description="还没有复核记录" :image-style="{ height: '40px' }" /></template>
       </a-table>
@@ -89,7 +94,7 @@ const createableApps = computed(() => hub.applicationOptions.filter(o => hub.can
       <a-form ref="formRef" layout="vertical" :model="form" :rules="rules">
         <a-form-item label="复核名称" name="name"><a-input v-model:value="form.name" :maxlength="100" placeholder="例如：2026Q4 季度复核" /></a-form-item>
         <a-form-item label="软件" name="applicationId"><a-select v-model:value="form.applicationId" :options="createableApps" placeholder="选择软件" show-search option-filter-prop="label" /></a-form-item>
-        <a-form-item label="部门" name="departmentId" extra="不选则覆盖该软件在全部部门的授权">
+        <a-form-item label="部门" name="departmentId" :extra="hub.me?.allDepartments ? '不选则覆盖该软件在全部部门的授权' : '只能复核你管理的部门'">
           <a-select v-model:value="form.departmentId" :options="hub.departmentOptions" placeholder="全部部门" allow-clear show-search option-filter-prop="label" />
         </a-form-item>
         <a-form-item label="截止天数" name="dueDays" extra="留空则不设截止时间">

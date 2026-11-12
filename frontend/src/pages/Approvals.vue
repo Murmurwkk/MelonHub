@@ -114,9 +114,9 @@ async function save() {
           </template>
           <template v-else-if="column.key === 'actions'">
             <a-space v-if="record.status === 'PENDING'" :size="4">
-              <GuardedLink fn="request.approve" :app="record.applicationId" @click="approve(record)">批准</GuardedLink>
+              <GuardedLink fn="request.approve" :app="record.applicationId" :dept="record.departmentId" @click="approve(record)">批准</GuardedLink>
               <a-divider type="vertical" />
-              <GuardedLink fn="request.approve" :app="record.applicationId" class="danger-link" @click="reject(record)">驳回</GuardedLink>
+              <GuardedLink fn="request.approve" :app="record.applicationId" :dept="record.departmentId" class="danger-link" @click="reject(record)">驳回</GuardedLink>
             </a-space>
             <span v-else class="muted">—</span>
           </template>

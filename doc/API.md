@@ -247,7 +247,18 @@ POST /api/v1/access-requests
 | `APP_ADMIN` 软件管理员 | 5 项查看功能与 `application.credentials`、`domain.configure`、`domain.assign`、`domain.transfer`、`request.approve`、`review.manage` |
 | `AUDITOR` 审计员 | 5 项查看功能：`org.view`、`domain.view`、`governance.view`、`audit.view`、`system.view` |
 
-升级时原软件管理员账号被设为“指定软件”，其余账号为“全部软件”。软件范围只限制按软件进行的操作（授权域、密钥、Webhook、审批、复核、清单）以及列表中显示的软件和审计记录；部门、用户等平台级功能不受软件范围限制。管理员角色是平台自身的操作权限，与平台中管理的 RBAC0 业务数据相互独立。
+升级时原软件管理员账号被设为“指定软件”，其余账号为“全部软件”。软件范围只限制按软件进行的操作（授权域、密钥、Webhook、审批、复核、清单）以及列表中显示的软件和审计记录。管理员角色是平台自身的操作权限，与平台中管理的 RBAC0 业务数据相互独立。
+
+**分级管理（管理员层级与部门范围）**：业务部门保持平级；管理员账号组成一棵树。除顶级账号外，每个账号都有上级（创建它的或指定的管理员），由上级及更上层管理；顶级账号（升级前的超级管理员，以及 `ADMIN_PASSWORD_RESET` 恢复的初始管理员）管理全部账号。账号分两类：`MANAGER` 管理员可以有下级；`DEPARTMENT` 部门管理员必须指定所管部门，不能有下级，其角色不能包含 `account.manage`、`role.manage`。下级永远不超过上级：角色功能是上级角色功能的子集；上级限定了部门（或软件）时，下级的部门（或软件）是其子集。任何会破坏这些规则的修改（新建、修改账号，修改角色功能）在写入前返回 `409` 并说明原因。
+
+部门范围限定（`allDepartments=false`）的账号：
+
+- 部门、用户、审批、复核、审计、即将到期、权限反查、全局搜索只显示所管部门的数据；部门已删除的申请与复核、不限部门的复核、无部门的审计记录只对全部部门的账号可见。
+- 授权域接口要求部门与软件都在范围内，否则 `403`；跨部门复制要求源、目标部门都在范围内；清单导入只能包含所管部门。
+- 新建用户只能放入所管部门；用户同时属于范围外部门时，只能调整其在所管部门的成员关系，不能改资料；停用、删除、强制下线只能针对完全属于所管部门的用户。
+- `department.manage`、`application.manage`、`application.credentials`、`role.manage` 是平台级功能，以及用户批量导入，只对全部部门的账号开放（`403`“该功能只对可管理全部部门的管理员开放”）。
+
+`/api/auth/login` 与 `/api/auth/me` 另返回 `root`、`kind`、`allDepartments`、`departmentIds`。
 
 ### 5.3 部门、软件与 API Key
 
@@ -387,19 +398,19 @@ POST /api/v1/access-requests
 
 `problem` 为第一处问题：`LINK_BROKEN`（与上一条衔接不上，通常是中间记录被删除）、`MODIFIED`（记录内容被修改）、`TAIL_MISSING`（链尾与封存表记录的不一致，最新的记录被删除）；`brokenAt`、`brokenSeq` 为出问题记录的 ID 与顺序号。一次未校验到链尾时 `complete` 为 false，用 `nextSeq` 作为下一次的 `fromSeq` 继续。按保留期清理旧审计时，最后一条被删除记录的哈希会保存为锚点，剩余的第一条与锚点衔接，因此清理不会被报告为断裂。V5 之后封存的记录使用带长度前缀、包含顺序号的规范化形式，文本在字段之间移动也会被发现；更早的记录按原形式校验。哈希链能发现记录被修改或删除；但它与数据保存在同一个数据库中，拥有数据库写权限的人可以重算整条链，因此不能代替导出到 SIEM 或 WORM 存储的外部存证。
 
-### 5.8 管理员账号（需要 `account.manage`）
+### 5.8 管理员账号（需要 `account.manage`，只能管理自己的下级）
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/admin/accounts` | 账号列表：角色、启用状态、锁定时间、最近登录、软件范围（`allApplications`、`applicationIds`）、是否启用两步验证 |
-| POST | `/api/admin/accounts` | `{"username":"ops.zhang","displayName":"张工","role":"APP_ADMIN","password":"12–100 个字符","enabled":true,"allApplications":false,"applicationIds":[3]}`；`role` 为任一管理员角色编码 |
-| PUT | `/api/admin/accounts/{username}` | `{"displayName":"","role":"ADMIN","enabled":true,"allApplications":true}` |
+| GET | `/api/admin/accounts` | 本人及所管理的账号：角色、上级 `parentUsername`、类型 `kind`、部门范围（`allDepartments`、`departmentIds`）、软件范围（`allApplications`、`applicationIds`）、`manageable`（当前操作者能否修改）、启用状态、锁定、最近登录、两步验证 |
+| POST | `/api/admin/accounts` | `{"username":"ops.zhang","displayName":"张工","role":"APP_ADMIN","password":"12–100 个字符","enabled":true,"parentUsername":"east-lead","kind":"DEPARTMENT","allDepartments":false,"departmentIds":[2],"allApplications":false,"applicationIds":[3]}`；`parentUsername` 默认为操作者本人，必须是本人或本人管理的管理员；`kind` 默认 `MANAGER` |
+| PUT | `/api/admin/accounts/{username}` | `{"displayName":"","role":"ADMIN","enabled":true}`，可另带 `parentUsername`（移到本人或本人管理的管理员之下）、`kind`、部门与软件范围；省略的范围、类型和上级保持不变 |
 | PUT | `/api/admin/accounts/{username}/password` | `{"password":"12–100 个字符"}`，重置后该账号全部会话下线 |
 | POST | `/api/admin/accounts/{username}/unlock` | 解除登录锁定 |
 | POST | `/api/admin/accounts/{username}/mfa/reset` | 重置两步验证（设备丢失时使用），之后该账号仅凭密码登录，直到重新绑定 |
 | DELETE | `/api/admin/accounts/{username}` | 删除账号及其全部会话 |
 
-`allApplications` 为 `false` 时账号只能管理 `applicationIds` 中的软件；省略 `allApplications` 时，提供 `applicationIds` 表示限定为这些软件，不提供表示全部软件。角色不存在返回 400。不能修改自己的角色、停用或删除自己；平台至少保留一个启用的超级管理员。修改角色或停用账号后，该账号的全部会话立即下线；修改软件范围在下一次请求生效。账号名为 3–100 位字母、数字或 `_ . @ -`，不能以 `.` 开头；路径中直接使用账号名，`@` 与 `.` 不需要转义。密码规则与会话失效规则见第 5.1 节。
+`allApplications` 为 `false` 时账号只能管理 `applicationIds` 中的软件；新建时省略 `allApplications`，提供 `applicationIds` 表示限定为这些软件，不提供表示全部软件（部门范围同理）。角色不存在返回 400。只能修改、重置、解锁、删除自己管理的账号（`403`）；自己只能改显示名称，不能修改自己的角色、类型、范围、上级，也不能停用或删除自己；还有下级的账号不能停用或删除（`409`）；平台至少保留一个启用的超级管理员。修改角色或停用账号后，该账号的全部会话立即下线；修改软件范围在下一次请求生效。账号名为 3–100 位字母、数字或 `_ . @ -`，不能以 `.` 开头；路径中直接使用账号名，`@` 与 `.` 不需要转义。密码规则与会话失效规则见第 5.1 节。
 
 ### 5.9 审批中心
 

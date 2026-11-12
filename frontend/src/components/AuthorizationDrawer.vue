@@ -20,9 +20,9 @@ const scope = reactive({
   departmentId, applicationId, department, application, hasDomain,
   domainKey: computed(() => hasDomain.value ? `${departmentId.value}:${applicationId.value}` : ''),
   domainQuery: computed(() => ({ departmentId: departmentId.value, applicationId: applicationId.value })),
-  canConfigure: computed(() => hasDomain.value && hub.can('domain.configure', applicationId.value)),
-  canAssign: computed(() => hasDomain.value && hub.can('domain.assign', applicationId.value)),
-  canTransfer: computed(() => hasDomain.value && hub.can('domain.transfer', applicationId.value)),
+  canConfigure: computed(() => hasDomain.value && hub.can('domain.configure', applicationId.value, departmentId.value)),
+  canAssign: computed(() => hasDomain.value && hub.can('domain.assign', applicationId.value, departmentId.value)),
+  canTransfer: computed(() => hasDomain.value && hub.can('domain.transfer', applicationId.value, departmentId.value)),
 })
 provide(authorizationScopeKey, scope)
 const title = computed(() => props.applicationId ? `软件配置：${hub.applicationName(props.applicationId)}` : `部门配置：${hub.departmentName(props.departmentId)}`)

@@ -21,8 +21,9 @@ import org.springframework.transaction.annotation.Transactional;
 public class AdminRoleService {
     private final AdminRoleDao dao;
     private final RbacService rbac;
+    private final AuthService accounts;
 
-    public AdminRoleService(AdminRoleDao dao, RbacService rbac) { this.dao = dao; this.rbac = rbac; }
+    public AdminRoleService(AdminRoleDao dao, RbacService rbac, AuthService accounts) { this.dao = dao; this.rbac = rbac; this.accounts = accounts; }
 
     public List<Map<String,Object>> functions() { return dao.functions(); }
     public List<Map<String,Object>> roles() { return dao.roles(); }
@@ -38,6 +39,9 @@ public class AdminRoleService {
         var role = dao.role(code).orElseThrow(() -> ApiException.missing("管理员角色不存在"));
         if (role.builtin()) throw ApiException.bad("内置角色不能修改");
         var functions = functions(input.functions(), actor);
+        // Accounts using the role must still fit below their parents, and their children below them.
+        accounts.lockTree();
+        accounts.requireConsistentWithRole(code, functions);
         dao.update(code, input.name().strip(), text(input.description()), functions);
         rbac.audit(actor.actor(), "ADMIN_ROLE_UPDATED", code, null, null, difference(role.functions(), functions));
     }

@@ -28,16 +28,34 @@ public interface AdminAccountRepository extends JpaRepository<AdminAccount, Stri
         long getMfaLastStep();
         long getCredentialVersion();
         boolean isAllApplications();
+        String getKind();
+        boolean isRoot();
+        boolean isAllDepartments();
     }
     interface AccountApplication {
         String getUsername();
         Long getApplicationId();
     }
+    interface AccountDepartment {
+        String getUsername();
+        Long getDepartmentId();
+    }
+    /** One account's place in the administrator tree. */
+    interface Node {
+        String getUsername();
+        String getParent();
+        String getKind();
+        String getRole();
+        boolean isEnabled();
+        boolean isAllDepartments();
+        boolean isAllApplications();
+    }
 
     @Query("""
             select a.username as username, a.displayName as displayName, a.role.code as role, a.enabled as enabled,
                    a.passwordHash as passwordHash, a.lockedUntil as lockedUntil, a.mfaSecret as mfaSecret,
-                   a.mfaLastStep as mfaLastStep, a.credentialVersion as credentialVersion, a.allApplications as allApplications
+                   a.mfaLastStep as mfaLastStep, a.credentialVersion as credentialVersion, a.allApplications as allApplications,
+                   a.kind as kind, case when a.parent is null then true else false end as root, a.allDepartments as allDepartments
             from AdminAccount a where a.username = :username""")
     Optional<Credentials> credentials(String username);
 
@@ -50,17 +68,33 @@ public interface AdminAccountRepository extends JpaRepository<AdminAccount, Stri
     @Query("select app from AdminAccount a join a.applicationIds app where a.username = :username order by app")
     List<Long> applicationIds(String username);
 
+    @Query("select a.username as username, d as departmentId from AdminAccount a join a.departmentIds d")
+    List<AccountDepartment> departmentPairs();
+
+    @Query("select d from AdminAccount a join a.departmentIds d where a.username = :username order by d")
+    List<Long> departmentIds(String username);
+
+    @Query("""
+            select a.username as username, p.username as parent, a.kind as kind, a.role.code as role, a.enabled as enabled,
+                   a.allDepartments as allDepartments, a.allApplications as allApplications
+            from AdminAccount a left join a.parent p""")
+    List<Node> nodes();
+
     @Query("select a.mfaPendingSecret from AdminAccount a where a.username = :username")
     List<String> pendingMfaSecret(String username);
 
-    /** Serializes changes that could remove the last enabled super administrator. */
+    /**
+     * Serializes changes to the administrator tree (accounts, their scopes and the roles they use): each one takes
+     * every account row before reading the tree, so two changes cannot each pass the checks and together break them.
+     */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select a from AdminAccount a where a.role.code = 'SUPER_ADMIN' and a.enabled = true order by a.username")
-    List<AdminAccount> lockEnabledSuperAdmins();
+    @Query("select a from AdminAccount a order by a.username")
+    List<AdminAccount> lockAll();
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""
-            update AdminAccount a set a.passwordHash = :hash, a.role = :role, a.allApplications = true, a.enabled = true, a.failedAttempts = 0,
+            update AdminAccount a set a.passwordHash = :hash, a.role = :role, a.allApplications = true, a.allDepartments = true, a.kind = 'MANAGER',
+                   a.parent = null, a.enabled = true, a.failedAttempts = 0,
                    a.lockedUntil = null, a.passwordChangedAt = :now, a.credentialVersion = a.credentialVersion + 1
             where a.username = :username""")
     int resetBootstrap(String username, String hash, AdminRole role, Instant now);
@@ -75,9 +109,14 @@ public interface AdminAccountRepository extends JpaRepository<AdminAccount, Stri
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""
-            update AdminAccount a set a.displayName = :displayName, a.role = :role, a.enabled = :enabled, a.allApplications = :allApplications
+            update AdminAccount a set a.displayName = :displayName, a.role = :role, a.enabled = :enabled, a.kind = :kind,
+                   a.allDepartments = :allDepartments, a.allApplications = :allApplications
             where a.username = :username""")
-    int update(String username, String displayName, AdminRole role, boolean enabled, boolean allApplications);
+    int update(String username, String displayName, AdminRole role, boolean enabled, String kind, boolean allDepartments, boolean allApplications);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("update AdminAccount a set a.parent = :parent where a.username = :username")
+    int moveUnder(String username, AdminAccount parent);
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""

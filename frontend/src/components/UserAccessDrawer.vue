@@ -69,7 +69,8 @@ function revoke() {
     <template #extra>
       <a-space>
         <a-button @click="load">刷新</a-button>
-        <GuardedButton fn="user.manage" danger :disabled="!data" @click="revoke">强制下线</GuardedButton>
+        <GuardedButton fn="user.manage" :allowed="!data || hub.canManageUser(data.user.departmentIds)"
+                       :reason="hub.denial('user.manage') || '该用户还属于你管理范围以外的部门'" danger :disabled="!data" @click="revoke">强制下线</GuardedButton>
       </a-space>
     </template>
     <a-spin :spinning="loading">

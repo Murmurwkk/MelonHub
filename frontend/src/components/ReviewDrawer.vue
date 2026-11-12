@@ -86,7 +86,7 @@ async function close() {
     <template #extra>
       <a-space>
         <a-button @click="reload">刷新</a-button>
-        <GuardedButton v-if="isOpen" fn="review.manage" :app="summary?.applicationId" danger :loading="closing" @click="close">关闭并应用</GuardedButton>
+        <GuardedButton v-if="isOpen" fn="review.manage" :app="summary?.applicationId" :dept="summary?.departmentId" danger :loading="closing" @click="close">关闭并应用</GuardedButton>
       </a-space>
     </template>
     <template v-if="summary">
@@ -120,9 +120,9 @@ async function close() {
         </template>
         <template v-else-if="column.key === 'actions'">
           <a-space v-if="isOpen" :size="4">
-            <GuardedLink fn="review.manage" :app="summary?.applicationId" @click="decide(record, 'KEEP')">保留</GuardedLink>
+            <GuardedLink fn="review.manage" :app="summary?.applicationId" :dept="summary?.departmentId" @click="decide(record, 'KEEP')">保留</GuardedLink>
             <a-divider type="vertical" />
-            <GuardedLink fn="review.manage" :app="summary?.applicationId" class="danger-link" @click="decide(record, 'REVOKE')">回收</GuardedLink>
+            <GuardedLink fn="review.manage" :app="summary?.applicationId" :dept="summary?.departmentId" class="danger-link" @click="decide(record, 'REVOKE')">回收</GuardedLink>
           </a-space>
         </template>
       </template>

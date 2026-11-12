@@ -5,10 +5,10 @@ import type { AdminFunctionCode } from '../types'
 
 defineOptions({ inheritAttrs: false })
 /** A table action link that needs a console function; without it the text is greyed out and explains why on hover. */
-const props = withDefaults(defineProps<{ fn: AdminFunctionCode; app?: number; allowed?: boolean; reason?: string }>(), { allowed: undefined })
+const props = withDefaults(defineProps<{ fn: AdminFunctionCode; app?: number; dept?: number | null; allowed?: boolean; reason?: string }>(), { allowed: undefined })
 const hub = useHub()
-const permitted = computed(() => props.allowed ?? hub.can(props.fn, props.app))
-const why = computed(() => permitted.value ? undefined : props.reason ?? (hub.denial(props.fn, props.app) || '当前账号不能管理所选软件'))
+const permitted = computed(() => props.allowed ?? hub.can(props.fn, props.app, props.dept))
+const why = computed(() => permitted.value ? undefined : props.reason ?? (hub.denial(props.fn, props.app, props.dept) || '当前账号不能管理所选软件'))
 </script>
 
 <template>

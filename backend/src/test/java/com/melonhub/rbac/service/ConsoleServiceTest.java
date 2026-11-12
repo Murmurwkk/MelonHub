@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import com.melonhub.rbac.dao.Visibility;
 import com.melonhub.rbac.cache.PermissionCache;
 import com.melonhub.rbac.dao.AuditDao;
 import com.melonhub.rbac.dao.GovernanceDao;
@@ -23,7 +24,7 @@ class ConsoleServiceTest {
 
     @Test void anUnreachableDatabaseStillAnswersWithEveryKey() {
         when(dao.healthy()).thenThrow(new DataAccessResourceFailureException("down"));
-        var status = console.status(List.of());
+        var status = console.status(new Visibility(List.of(), List.of()));
         assertThat(status).containsEntry("database", "DOWN").containsKeys(DETAILS.toArray(String[]::new));
         DETAILS.forEach(key -> assertThat(status.get(key)).as(key).isNull());
     }
@@ -32,7 +33,7 @@ class ConsoleServiceTest {
         when(dao.healthy()).thenReturn(true);
         when(dao.consoleCounts()).thenReturn(Map.<String,Object>of("users", 3L));
         when(governance.pendingCount(any())).thenThrow(new DataAccessResourceFailureException("lost"));
-        var status = console.status(List.of());
+        var status = console.status(new Visibility(List.of(), List.of()));
         assertThat(status).containsEntry("database", "DOWN").containsKeys(DETAILS.toArray(String[]::new));
         DETAILS.forEach(key -> assertThat(status.get(key)).as(key).isNull());
     }

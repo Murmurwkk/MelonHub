@@ -19,7 +19,8 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class RbacDao {
     public record Page(List<Map<String,Object>> items, long total) {}
-    public record AuditFilter(Long departmentId, Long applicationId, Collection<Long> visibleApplications, String actor,
+    /** visible limits the rows to the operator's applications and departments; records without a department need both unlimited. */
+    public record AuditFilter(Long departmentId, Long applicationId, Visibility visible, String actor,
                               String action, String keyword, Timestamp from, Timestamp to) {}
 
     private final JdbcTemplate db;
@@ -43,6 +44,12 @@ public class RbacDao {
         Where in(String column, Collection<Long> values) {
             if (values.isEmpty()) return and("1=0");
             return and(column + " IN (" + AuthDao.placeholders(values.size()) + ")", values.toArray());
+        }
+        /** Users with a membership in one of the departments. */
+        Where members(String userColumn, Collection<Long> departments) {
+            if (departments.isEmpty()) return and("1=0");
+            return and("EXISTS(SELECT 1 FROM memberships mv WHERE mv.user_id=" + userColumn + " AND mv.department_id IN ("
+                    + AuthDao.placeholders(departments.size()) + "))", departments.toArray());
         }
     }
     private Page page(String select, String from, Where where, String order, int page, int size) {
@@ -79,12 +86,13 @@ public class RbacDao {
         if (!Set.of("departments", "applications").contains(table)) throw new IllegalArgumentException();
         return db.query("SELECT name,code FROM " + table + " WHERE id=?", (rs, n) -> new String[] { rs.getString(1), rs.getString(2) }, id).stream().findFirst();
     }
-    /** Members, roles and permissions that keep a department from being deleted. */
+    /** Members, roles, permissions and administrators limited to it that keep a department from being deleted. */
     public long[] departmentUsage(long id) {
         return new long[] {
             count("SELECT COUNT(*) FROM memberships WHERE department_id=?", id),
             count("SELECT COUNT(*) FROM roles WHERE department_id=?", id),
-            count("SELECT COUNT(*) FROM permissions WHERE department_id=?", id) };
+            count("SELECT COUNT(*) FROM permissions WHERE department_id=?", id),
+            count("SELECT COUNT(*) FROM admin_account_departments WHERE department_id=?", id) };
     }
     /** Roles and permissions, across all departments, that keep an application from being deleted. */
     public long[] applicationUsage(long id) {
@@ -108,9 +116,11 @@ public class RbacDao {
                 join(new Object[]{dept, app}, ids));
     }
 
-    public List<Map<String,Object>> departments() {
+    public List<Map<String,Object>> departments(Collection<Long> visible) {
+        var where = new Where();
+        if (visible != null) where.in("d.id", visible);
         return db.queryForList("SELECT d.id,d.name,d.code,d.created_at AS createdAt,(SELECT COUNT(*) FROM memberships m WHERE m.department_id=d.id) AS memberCount,"
-                + "(SELECT COUNT(*) FROM roles r WHERE r.department_id=d.id) AS roleCount FROM departments d ORDER BY d.id");
+                + "(SELECT COUNT(*) FROM roles r WHERE r.department_id=d.id) AS roleCount FROM departments d" + where.sql + " ORDER BY d.id", where.args.toArray());
     }
     public long createDepartment(String name, String code) { return insert("INSERT INTO departments(name,code) VALUES (?,?)", name, code); }
     public int updateDepartment(long id, String name, String code) { return db.update("UPDATE departments SET name=?,code=? WHERE id=?", name, code, id); }
@@ -159,8 +169,10 @@ public class RbacDao {
     }
     public int revokeAllKeys(long app) { return db.update("UPDATE application_keys SET revoked_at=CURRENT_TIMESTAMP WHERE application_id=? AND revoked_at IS NULL", app); }
 
-    public Page users(String keyword, Long department, Boolean enabled, int page, int size) {
+    /** visibleDepartments limits the list to members of those departments; null lists every user. */
+    public Page users(String keyword, Long department, Boolean enabled, Collection<Long> visibleDepartments, int page, int size) {
         var where = new Where();
+        if (visibleDepartments != null) where.members("u.id", visibleDepartments);
         if (enabled != null) where.and("u.enabled=?", enabled);
         if (department != null) where.and("EXISTS(SELECT 1 FROM memberships m WHERE m.user_id=u.id AND m.department_id=?)", department);
         if (keyword != null && !keyword.isBlank()) {
@@ -343,7 +355,8 @@ public class RbacDao {
         var where = new Where();
         if (filter.departmentId() != null) where.and("e.department_id=?", filter.departmentId());
         if (filter.applicationId() != null) where.and("e.application_id=?", filter.applicationId());
-        if (filter.visibleApplications() != null) where.in("e.application_id", filter.visibleApplications());
+        if (filter.visible().applications() != null) where.in("e.application_id", filter.visible().applications());
+        if (filter.visible().departments() != null) where.in("e.department_id", filter.visible().departments());
         if (filter.actor() != null && !filter.actor().isBlank()) where.and("e.actor=?", filter.actor().strip());
         if (filter.action() != null && !filter.action().isBlank()) where.and("e.action=?", filter.action().strip());
         if (filter.keyword() != null && !filter.keyword().isBlank()) {
@@ -392,21 +405,30 @@ public class RbacDao {
             + "JOIN role_permissions rp ON rp.role_id=r.id JOIN permissions p ON p.id=rp.permission_id "
             + "JOIN departments d ON d.id=ur.department_id "
             + "WHERE p.application_id=? AND p.code=? AND r.department_id=p.department_id AND (ur.expires_at IS NULL OR ur.expires_at>CURRENT_TIMESTAMP)";
+    /** Limits holders to one department and to the departments the operator may see (null: all). */
+    private static String holderFilter(Long dept, Collection<Long> visibleDepartments, List<Object> args) {
+        var filter = new StringBuilder();
+        if (dept != null) { filter.append(" AND ur.department_id=?"); args.add(dept); }
+        if (visibleDepartments != null) {
+            if (visibleDepartments.isEmpty()) return filter.append(" AND 1=0").toString();
+            filter.append(" AND ur.department_id IN (").append(AuthDao.placeholders(visibleDepartments.size())).append(")");
+            args.addAll(visibleDepartments);
+        }
+        return filter.toString();
+    }
     /** Number of distinct (user, department) holders of one permission code. */
-    public long permissionHolderCount(long app, String code, Long dept) {
+    public long permissionHolderCount(long app, String code, Long dept, Collection<Long> visibleDepartments) {
         var args = new ArrayList<Object>(List.of(app, code));
-        String filter = dept == null ? "" : " AND ur.department_id=?";
-        if (dept != null) args.add(dept);
+        String filter = holderFilter(dept, visibleDepartments, args);
         return db.queryForObject("SELECT COUNT(*) FROM (SELECT DISTINCT ur.user_id,ur.department_id " + HOLDERS + filter + ") holders", Long.class, args.toArray());
     }
     /**
      * Everyone currently holding one permission code through an enabled role and a non-expired assignment: the
      * first {@code limit} (user, department) holders, each with every role that grants the code.
      */
-    public List<Map<String,Object>> permissionHolders(long app, String code, Long dept, int limit) {
+    public List<Map<String,Object>> permissionHolders(long app, String code, Long dept, Collection<Long> visibleDepartments, int limit) {
         var args = new ArrayList<Object>(List.of(app, code));
-        String filter = dept == null ? "" : " AND ur.department_id=?";
-        if (dept != null) args.add(dept);
+        String filter = holderFilter(dept, visibleDepartments, args);
         var keys = new ArrayList<Object>(args);
         keys.add(limit);
         var holders = db.queryForList("SELECT DISTINCT ur.department_id,ur.user_id " + HOLDERS + filter + " ORDER BY ur.department_id,ur.user_id LIMIT ?", keys.toArray());
@@ -421,22 +443,17 @@ public class RbacDao {
                 + "ur.department_id AS departmentId,d.name AS departmentName,r.id AS roleId,r.name AS roleName,r.code AS roleCode,ur.expires_at AS expiresAt "
                 + HOLDERS + filter + " AND (ur.user_id,ur.department_id) IN (" + pairs + ") ORDER BY ur.department_id,u.id,r.id", args.toArray());
     }
-    public List<Map<String,Object>> expiringAssignments(Timestamp deadline, Collection<Long> visible, Long app) {
-        var sql = new StringBuilder("SELECT ur.user_id AS userId,u.name AS userName,u.external_id AS externalId,ur.role_id AS roleId,r.name AS roleName,r.code AS roleCode,"
+    public List<Map<String,Object>> expiringAssignments(Timestamp deadline, Visibility visible, Long app) {
+        var where = new Where().and("ur.expires_at IS NOT NULL AND ur.expires_at<=?", deadline);
+        if (visible.applications() != null) where.in("ur.application_id", visible.applications());
+        if (visible.departments() != null) where.in("ur.department_id", visible.departments());
+        if (app != null) where.and("ur.application_id=?", app);
+        return db.queryForList("SELECT ur.user_id AS userId,u.name AS userName,u.external_id AS externalId,ur.role_id AS roleId,r.name AS roleName,r.code AS roleCode,"
                 + "ur.department_id AS departmentId,d.name AS departmentName,ur.application_id AS applicationId,a.name AS applicationName,"
                 + "ur.expires_at AS expiresAt,ur.granted_by AS grantedBy,ur.granted_at AS grantedAt "
                 + "FROM user_roles ur JOIN users u ON u.id=ur.user_id JOIN roles r ON r.id=ur.role_id "
-                + "JOIN departments d ON d.id=ur.department_id JOIN applications a ON a.id=ur.application_id "
-                + "WHERE ur.expires_at IS NOT NULL AND ur.expires_at<=?");
-        var args = new ArrayList<Object>(List.of(deadline));
-        if (visible != null) {
-            if (visible.isEmpty()) return List.of();
-            sql.append(" AND ur.application_id IN (" + AuthDao.placeholders(visible.size()) + ")");
-            args.addAll(visible);
-        }
-        if (app != null) { sql.append(" AND ur.application_id=?"); args.add(app); }
-        sql.append(" ORDER BY ur.expires_at LIMIT 500");
-        return db.queryForList(sql.toString(), args.toArray());
+                + "JOIN departments d ON d.id=ur.department_id JOIN applications a ON a.id=ur.application_id"
+                + where.sql + " ORDER BY ur.expires_at LIMIT 500", where.args.toArray());
     }
     public long expiringCount(Timestamp deadline) {
         return count("SELECT COUNT(*) FROM user_roles WHERE expires_at IS NOT NULL AND expires_at<=?", deadline);
@@ -454,12 +471,15 @@ public class RbacDao {
     }
 
     // ---- console search and status (V3) ----
-    public List<Map<String,Object>> searchUsers(String pattern) {
-        return db.queryForList("SELECT id,name,external_id AS externalId,enabled FROM users WHERE name LIKE ? OR external_id LIKE ? OR email LIKE ? ORDER BY id LIMIT 5",
-                pattern, pattern, pattern);
+    public List<Map<String,Object>> searchUsers(String pattern, Collection<Long> visibleDepartments) {
+        var where = new Where().and("(u.name LIKE ? OR u.external_id LIKE ? OR u.email LIKE ?)", pattern, pattern, pattern);
+        if (visibleDepartments != null) where.members("u.id", visibleDepartments);
+        return db.queryForList("SELECT u.id,u.name,u.external_id AS externalId,u.enabled FROM users u" + where.sql + " ORDER BY u.id LIMIT 5", where.args.toArray());
     }
-    public List<Map<String,Object>> searchDepartments(String pattern) {
-        return db.queryForList("SELECT id,name,code FROM departments WHERE name LIKE ? OR code LIKE ? ORDER BY id LIMIT 5", pattern, pattern);
+    public List<Map<String,Object>> searchDepartments(String pattern, Collection<Long> visibleDepartments) {
+        var where = new Where().and("(name LIKE ? OR code LIKE ?)", pattern, pattern);
+        if (visibleDepartments != null) where.in("id", visibleDepartments);
+        return db.queryForList("SELECT id,name,code FROM departments" + where.sql + " ORDER BY id LIMIT 5", where.args.toArray());
     }
     public List<Map<String,Object>> searchApplications(String pattern, Collection<Long> visible) {
         var sql = new StringBuilder("SELECT id,name,code,enabled FROM applications WHERE (name LIKE ? OR code LIKE ?)");
@@ -472,17 +492,13 @@ public class RbacDao {
         sql.append(" ORDER BY id LIMIT 5");
         return db.queryForList(sql.toString(), args.toArray());
     }
-    public List<Map<String,Object>> searchRoles(String pattern, Collection<Long> visible) {
-        var sql = new StringBuilder("SELECT r.id,r.name,r.code,r.department_id AS departmentId,d.name AS departmentName,r.application_id AS applicationId,a.name AS applicationName "
-                + "FROM roles r JOIN departments d ON d.id=r.department_id JOIN applications a ON a.id=r.application_id WHERE (r.name LIKE ? OR r.code LIKE ?)");
-        var args = new ArrayList<Object>(List.of(pattern, pattern));
-        if (visible != null) {
-            if (visible.isEmpty()) return List.of();
-            sql.append(" AND r.application_id IN (" + AuthDao.placeholders(visible.size()) + ")");
-            args.addAll(visible);
-        }
-        sql.append(" ORDER BY r.id LIMIT 5");
-        return db.queryForList(sql.toString(), args.toArray());
+    public List<Map<String,Object>> searchRoles(String pattern, Visibility visible) {
+        var where = new Where().and("(r.name LIKE ? OR r.code LIKE ?)", pattern, pattern);
+        if (visible.applications() != null) where.in("r.application_id", visible.applications());
+        if (visible.departments() != null) where.in("r.department_id", visible.departments());
+        return db.queryForList("SELECT r.id,r.name,r.code,r.department_id AS departmentId,d.name AS departmentName,r.application_id AS applicationId,a.name AS applicationName "
+                + "FROM roles r JOIN departments d ON d.id=r.department_id JOIN applications a ON a.id=r.application_id" + where.sql + " ORDER BY r.id LIMIT 5",
+                where.args.toArray());
     }
     public Map<String,Object> consoleCounts() {
         return db.queryForMap("SELECT (SELECT COUNT(*) FROM users) AS users,(SELECT COUNT(*) FROM users WHERE enabled=TRUE) AS enabledUsers,"

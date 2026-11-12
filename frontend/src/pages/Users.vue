@@ -158,7 +158,8 @@ async function runImport() {
       <a-button :loading="exporting" @click="exportUsers"><ExportOutlined />导出列表</a-button>
       <a-button :loading="table.loading.value" @click="table.load()"><ReloadOutlined />刷新</a-button>
       <GuardedButton v-if="embedded" fn="user.manage" @click="chooseExisting">添加已有用户</GuardedButton>
-      <GuardedButton fn="user.manage" @click="openImport"><ImportOutlined />批量导入</GuardedButton>
+      <GuardedButton fn="user.manage" :allowed="hub.can('user.manage') && !!hub.me?.allDepartments"
+                     :reason="hub.denial('user.manage') || '批量导入只对可管理全部部门的管理员开放'" @click="openImport"><ImportOutlined />批量导入</GuardedButton>
       <GuardedButton fn="user.manage" type="primary" @click="edit()"><PlusOutlined />新建用户</GuardedButton>
     </PageHead>
     <a-card :bordered="false">
@@ -186,8 +187,9 @@ async function runImport() {
               <a-divider type="vertical" />
               <GuardedLink fn="user.manage" @click="edit(record)">编辑</GuardedLink>
               <a-divider type="vertical" />
-              <a-dropdown :disabled="!hub.can('user.manage')">
-                <GuardedLink fn="user.manage">更多 <DownOutlined /></GuardedLink>
+              <a-dropdown :disabled="!hub.canManageUser(record.departmentIds)">
+                <GuardedLink fn="user.manage" :allowed="hub.canManageUser(record.departmentIds)"
+                             :reason="hub.denial('user.manage') || '该用户还属于你管理范围以外的部门'">更多 <DownOutlined /></GuardedLink>
                 <template #overlay>
                   <a-menu @click="(e: { key: string }) => more(record, e.key)">
                     <a-menu-item key="toggle">{{ record.enabled ? '停用' : '启用' }}</a-menu-item>
